@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm update:*)",
+      "Bash(npx create-next-app@latest:*)",
+      "Bash(npm install:*)",
+      "Bash(npx next:*)",
+      "Bash(npx shadcn@latest:*)",
+      "Bash(npm run:*)",
+      "Bash(node:*)",
+      "Bash(git remote:*)",
+      "Bash(git add:*)",
+      "Bash(git:*)",
+      "Bash(ls:*)",
+      "Bash(cd:*)",
+      "Bash(find D:\\\\HR\\\\app\\\\src\\\\app\\\\\\(dashboard\\):*)"
+    ]
+  }
+}
