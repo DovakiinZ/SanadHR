@@ -1,0 +1,139 @@
+using HR.Api.Middleware;
+using HR.Api.Services;
+using HR.Application;
+using HR.Application.Common.Interfaces;
+using HR.Infrastructure;
+using HR.Modules.Core;
+using HR.Modules.Employees;
+using HR.Modules.Identity;
+using HR.Modules.Settings;
+using HR.Modules.Tasks;
+using HR.Modules.Tenancy;
+using HR.Modules.ESS;
+using HR.Modules.Workflows;
+using HR.Modules.Attendance;
+using HR.Modules.Payroll;
+using HR.Modules.Expenses;
+using HR.Modules.Loans;
+using HR.Modules.Documents;
+using HR.Modules.Reports;
+using HR.Modules.Dashboards;
+using HR.Modules.Notifications;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
+using System.Text;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Authentication
+var jwtKey = builder.Configuration["Jwt:Key"] ?? "super-secret-key-for-development-only-min-32-chars!!";
+var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "HR.Api";
+var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "HR.Client";
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = jwtIssuer,
+            ValidAudience = jwtAudience,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
+            ClockSkew = TimeSpan.Zero
+        };
+    });
+
+builder.Services.AddAuthorization();
+
+// Core services
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
+
+// Layers
+builder.Services.AddApplication();
+builder.Services.AddInfrastructure(builder.Configuration);
+
+// Modules
+builder.Services.AddCoreModule();
+builder.Services.AddTenancyModule();
+builder.Services.AddIdentityModule(builder.Configuration);
+builder.Services.AddEmployeesModule();
+builder.Services.AddTasksModule();
+builder.Services.AddSettingsModule();
+builder.Services.AddESSModule();
+builder.Services.AddWorkflowsModule();
+builder.Services.AddAttendanceModule();
+builder.Services.AddPayrollModule();
+builder.Services.AddExpensesModule();
+builder.Services.AddLoansModule();
+builder.Services.AddDocumentsModule();
+builder.Services.AddReportsModule();
+builder.Services.AddDashboardsModule();
+builder.Services.AddNotificationsModule();
+
+// Controllers
+builder.Services.AddControllers()
+    .AddApplicationPart(typeof(HR.Modules.Identity.Controllers.AuthController).Assembly)
+    .AddApplicationPart(typeof(HR.Modules.Core.Controllers.DepartmentsController).Assembly)
+    .AddApplicationPart(typeof(HR.Modules.Employees.Controllers.EmployeesController).Assembly)
+    .AddApplicationPart(typeof(HR.Modules.Tasks.Controllers.TasksController).Assembly)
+    .AddApplicationPart(typeof(HR.Modules.Settings.Controllers.SettingsController).Assembly);
+
+// CORS
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend", policy =>
+    {
+        policy.WithOrigins(builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? new[] { "http://localhost:3000" })
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
+    });
+});
+
+// Swagger
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new OpenApiInfo { Title = "HR Cloud API", Version = "v1" });
+    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Description = "JWT Authorization header using the Bearer scheme",
+        Name = "Authorization",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.ApiKey,
+        Scheme = "Bearer"
+    });
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
+            },
+            Array.Empty<string>()
+        }
+    });
+});
+
+var app = builder.Build();
+
+// Middleware
+app.UseMiddleware<ExceptionHandlingMiddleware>();
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
+app.UseCors("AllowFrontend");
+app.UseAuthentication();
+app.UseAuthorization();
+app.MapControllers();
+
+app.Run();
