@@ -37,6 +37,7 @@
     <ProjectReference Include="..\HR.Modules\Reports\HR.Modules.Reports.csproj" />
     <ProjectReference Include="..\HR.Modules\Dashboards\HR.Modules.Dashboards.csproj" />
     <ProjectReference Include="..\HR.Modules\Notifications\HR.Modules.Notifications.csproj" />
+    <ProjectReference Include="..\HR.Modules\Platform\HR.Modules.Platform.csproj" />
   </ItemGroup>
 
 </Project>

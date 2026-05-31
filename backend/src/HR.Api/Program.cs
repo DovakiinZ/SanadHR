@@ -19,6 +19,7 @@ using HR.Modules.Documents;
 using HR.Modules.Reports;
 using HR.Modules.Dashboards;
 using HR.Modules.Notifications;
+using HR.Modules.Platform;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -74,6 +75,7 @@ builder.Services.AddDocumentsModule();
 builder.Services.AddReportsModule();
 builder.Services.AddDashboardsModule();
 builder.Services.AddNotificationsModule();
+builder.Services.AddPlatformModule();
 
 // Controllers
 builder.Services.AddControllers()
@@ -81,7 +83,8 @@ builder.Services.AddControllers()
     .AddApplicationPart(typeof(HR.Modules.Core.Controllers.DepartmentsController).Assembly)
     .AddApplicationPart(typeof(HR.Modules.Employees.Controllers.EmployeesController).Assembly)
     .AddApplicationPart(typeof(HR.Modules.Tasks.Controllers.TasksController).Assembly)
-    .AddApplicationPart(typeof(HR.Modules.Settings.Controllers.SettingsController).Assembly);
+    .AddApplicationPart(typeof(HR.Modules.Settings.Controllers.SettingsController).Assembly)
+    .AddApplicationPart(typeof(HR.Modules.Platform.Controllers.MetadataController).Assembly);
 
 // CORS
 builder.Services.AddCors(options =>

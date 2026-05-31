@@ -1,5 +1,15 @@
 using HR.Application.Common.Interfaces;
 using HR.Domain.Common;
+using HR.Domain.Engines.Audit;
+using HR.Domain.Engines.Automation;
+using HR.Domain.Engines.Dashboards;
+using HR.Domain.Engines.Forms;
+using HR.Domain.Engines.Metadata;
+using HR.Domain.Engines.ObjectRegistry;
+using HR.Domain.Engines.Permissions;
+using HR.Domain.Engines.Timeline;
+using HR.Domain.Engines.Tokens;
+using HR.Domain.Engines.Workflows;
 using HR.Modules.Core.Entities;
 using HR.Modules.Employees.Entities;
 using HR.Modules.Identity.Entities;
@@ -50,6 +60,68 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
 
     // Audit
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+
+    // ===== Engine DbSets =====
+
+    // Metadata Engine
+    public DbSet<MetadataDefinition> MetadataDefinitions => Set<MetadataDefinition>();
+    public DbSet<MetadataField> MetadataFields => Set<MetadataField>();
+    public DbSet<MetadataOption> MetadataOptions => Set<MetadataOption>();
+    public DbSet<MetadataValue> MetadataValues => Set<MetadataValue>();
+
+    // Object Registry Engine
+    public DbSet<ObjectDefinition> ObjectDefinitions => Set<ObjectDefinition>();
+    public DbSet<ObjectField> ObjectFields => Set<ObjectField>();
+    public DbSet<ObjectRelationship> ObjectRelationships => Set<ObjectRelationship>();
+    public DbSet<ObjectPermission> ObjectPermissions => Set<ObjectPermission>();
+
+    // Permission Engine
+    public DbSet<PermissionTemplate> PermissionTemplates => Set<PermissionTemplate>();
+    public DbSet<PermissionTemplateItem> PermissionTemplateItems => Set<PermissionTemplateItem>();
+    public DbSet<UserPermissionOverride> UserPermissionOverrides => Set<UserPermissionOverride>();
+    public DbSet<UserPermissionScope> UserPermissionScopes => Set<UserPermissionScope>();
+    public DbSet<UserPermissionTemplate> UserPermissionTemplates => Set<UserPermissionTemplate>();
+
+    // Forms Engine
+    public DbSet<FormDefinition> FormDefinitions => Set<FormDefinition>();
+    public DbSet<FormField> FormFields => Set<FormField>();
+    public DbSet<FormSubmission> FormSubmissions => Set<FormSubmission>();
+    public DbSet<FormSubmissionValue> FormSubmissionValues => Set<FormSubmissionValue>();
+
+    // Workflow Engine
+    public DbSet<WorkflowDefinition> WorkflowDefinitions => Set<WorkflowDefinition>();
+    public DbSet<WorkflowVersion> WorkflowVersions => Set<WorkflowVersion>();
+    public DbSet<WorkflowNode> WorkflowNodes => Set<WorkflowNode>();
+    public DbSet<WorkflowEdge> WorkflowEdges => Set<WorkflowEdge>();
+    public DbSet<WorkflowCondition> WorkflowConditions => Set<WorkflowCondition>();
+    public DbSet<WorkflowApproverRule> WorkflowApproverRules => Set<WorkflowApproverRule>();
+    public DbSet<WorkflowInstance> WorkflowInstances => Set<WorkflowInstance>();
+    public DbSet<WorkflowInstanceStep> WorkflowInstanceSteps => Set<WorkflowInstanceStep>();
+
+    // Automation Engine
+    public DbSet<AutomationRule> AutomationRules => Set<AutomationRule>();
+    public DbSet<AutomationTrigger> AutomationTriggers => Set<AutomationTrigger>();
+    public DbSet<AutomationCondition> AutomationConditions => Set<AutomationCondition>();
+    public DbSet<AutomationAction> AutomationActions => Set<AutomationAction>();
+    public DbSet<AutomationExecutionLog> AutomationExecutionLogs => Set<AutomationExecutionLog>();
+
+    // Audit Engine
+    public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
+    public DbSet<AuditConfiguration> AuditConfigurations => Set<AuditConfiguration>();
+
+    // Timeline Engine
+    public DbSet<TimelineEvent> TimelineEvents => Set<TimelineEvent>();
+    public DbSet<TimelineSubscription> TimelineSubscriptions => Set<TimelineSubscription>();
+
+    // Token Engine
+    public DbSet<TokenDefinition> TokenDefinitions => Set<TokenDefinition>();
+    public DbSet<TokenCategory> TokenCategories => Set<TokenCategory>();
+
+    // Dashboard Engine
+    public DbSet<DashboardDefinition> DashboardDefinitions => Set<DashboardDefinition>();
+    public DbSet<DashboardWidget> DashboardWidgets => Set<DashboardWidget>();
+    public DbSet<WidgetFilter> WidgetFilters => Set<WidgetFilter>();
+    public DbSet<WidgetLayout> WidgetLayouts => Set<WidgetLayout>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

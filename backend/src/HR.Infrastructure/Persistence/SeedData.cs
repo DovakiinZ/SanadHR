@@ -25,7 +25,13 @@ public static class SeedData
             ["Dashboards"] = new[] { "View" },
             ["Workflows"] = new[] { "View", "Create", "Edit", "Delete" },
             ["ESS"] = new[] { "View", "Create", "Edit" },
-            ["Notifications"] = new[] { "View", "Create", "Edit", "Delete" }
+            ["Notifications"] = new[] { "View", "Create", "Edit", "Delete" },
+            ["Platform.Metadata"] = new[] { "View", "Create", "Edit", "Delete" },
+            ["Platform.Objects"] = new[] { "View", "Create", "Edit", "Delete" },
+            ["Platform.Permissions"] = new[] { "View", "Create", "Edit", "Delete" },
+            ["Platform.Forms"] = new[] { "View", "Create", "Edit", "Delete" },
+            ["Platform.Workflows"] = new[] { "View", "Create", "Edit", "Delete" },
+            ["Platform.Admin"] = new[] { "View" }
         };
 
         var index = 1;

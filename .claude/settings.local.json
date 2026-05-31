@@ -13,7 +13,10 @@
       "Bash(git:*)",
       "Bash(ls:*)",
       "Bash(cd:*)",
-      "Bash(find D:\\\\HR\\\\app\\\\src\\\\app\\\\\\(dashboard\\):*)"
+      "Bash(find D:\\\\HR\\\\app\\\\src\\\\app\\\\\\(dashboard\\):*)",
+      "Bash(dotnet:*)",
+      "Bash(xargs wc:*)",
+      "Bash(where dotnet:*)"
     ]
   }
 }
