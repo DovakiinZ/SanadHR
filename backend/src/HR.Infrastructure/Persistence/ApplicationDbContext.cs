@@ -2,11 +2,15 @@ using HR.Application.Common.Interfaces;
 using HR.Domain.Common;
 using HR.Domain.Engines.Audit;
 using HR.Domain.Engines.Automation;
+using HR.Domain.Engines.CompanyConfig;
 using HR.Domain.Engines.Dashboards;
+using HR.Domain.Engines.Documents;
 using HR.Domain.Engines.Forms;
 using HR.Domain.Engines.Metadata;
 using HR.Domain.Engines.ObjectRegistry;
+using HR.Domain.Engines.OrgGraph;
 using HR.Domain.Engines.Permissions;
+using HR.Domain.Engines.Reports;
 using HR.Domain.Engines.Timeline;
 using HR.Domain.Engines.Tokens;
 using HR.Domain.Engines.Workflows;
@@ -119,9 +123,55 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
 
     // Dashboard Engine
     public DbSet<DashboardDefinition> DashboardDefinitions => Set<DashboardDefinition>();
+    public DbSet<DashboardCategory> DashboardCategories => Set<DashboardCategory>();
+    public DbSet<DashboardTemplate> DashboardTemplates => Set<DashboardTemplate>();
+    public DbSet<DashboardShare> DashboardShares => Set<DashboardShare>();
     public DbSet<DashboardWidget> DashboardWidgets => Set<DashboardWidget>();
+    public DbSet<WidgetDefinition> WidgetDefinitions => Set<WidgetDefinition>();
+    public DbSet<WidgetDataSource> WidgetDataSources => Set<WidgetDataSource>();
+    public DbSet<WidgetDrilldown> WidgetDrilldowns => Set<WidgetDrilldown>();
+    public DbSet<WidgetPermission> WidgetPermissions => Set<WidgetPermission>();
     public DbSet<WidgetFilter> WidgetFilters => Set<WidgetFilter>();
     public DbSet<WidgetLayout> WidgetLayouts => Set<WidgetLayout>();
+
+    // Report Engine
+    public DbSet<ReportDefinition> ReportDefinitions => Set<ReportDefinition>();
+    public DbSet<ReportTemplate> ReportTemplates => Set<ReportTemplate>();
+    public DbSet<ReportField> ReportFields => Set<ReportField>();
+    public DbSet<ReportRelationship> ReportRelationships => Set<ReportRelationship>();
+    public DbSet<ReportFilter> ReportFilters => Set<ReportFilter>();
+    public DbSet<ReportGrouping> ReportGroupings => Set<ReportGrouping>();
+    public DbSet<ReportSorting> ReportSortings => Set<ReportSorting>();
+    public DbSet<ReportSchedule> ReportSchedules => Set<ReportSchedule>();
+    public DbSet<ReportShare> ReportShares => Set<ReportShare>();
+
+    // Document Engine
+    public DbSet<DocumentTemplate> DocumentTemplates => Set<DocumentTemplate>();
+    public DbSet<DocumentTemplateVersion> DocumentTemplateVersions => Set<DocumentTemplateVersion>();
+    public DbSet<DocumentTemplateToken> DocumentTemplateTokens => Set<DocumentTemplateToken>();
+    public DbSet<GeneratedDocument> GeneratedDocuments => Set<GeneratedDocument>();
+    public DbSet<CompanyBranding> CompanyBrandings => Set<CompanyBranding>();
+    public DbSet<DocumentWorkflowLink> DocumentWorkflowLinks => Set<DocumentWorkflowLink>();
+
+    // Organization Graph Engine
+    public DbSet<OrgNode> OrgNodes => Set<OrgNode>();
+    public DbSet<OrgEdge> OrgEdges => Set<OrgEdge>();
+    public DbSet<OrgGraphLayout> OrgGraphLayouts => Set<OrgGraphLayout>();
+    public DbSet<EmployeeReportingLine> EmployeeReportingLines => Set<EmployeeReportingLine>();
+
+    // Workflow Enhancement
+    public DbSet<WorkflowDynamicApprover> WorkflowDynamicApprovers => Set<WorkflowDynamicApprover>();
+    public DbSet<WorkflowDynamicCondition> WorkflowDynamicConditions => Set<WorkflowDynamicCondition>();
+    public DbSet<WorkflowAction> WorkflowActions => Set<WorkflowAction>();
+    public DbSet<WorkflowSimulation> WorkflowSimulations => Set<WorkflowSimulation>();
+
+    // Company Configuration Engine
+    public DbSet<CompanyProfile> CompanyProfiles => Set<CompanyProfile>();
+    public DbSet<Position> Positions => Set<Position>();
+    public DbSet<Grade> Grades => Set<Grade>();
+    public DbSet<CostCenter> CostCenters => Set<CostCenter>();
+    public DbSet<CalendarSetting> CalendarSettings => Set<CalendarSetting>();
+    public DbSet<FiscalPeriod> FiscalPeriods => Set<FiscalPeriod>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

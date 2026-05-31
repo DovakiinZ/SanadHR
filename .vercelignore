@@ -1,0 +1,4 @@
+backend/
+.claude/
+*.md
+*.sln

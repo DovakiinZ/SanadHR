@@ -31,6 +31,11 @@ public static class SeedData
             ["Platform.Permissions"] = new[] { "View", "Create", "Edit", "Delete" },
             ["Platform.Forms"] = new[] { "View", "Create", "Edit", "Delete" },
             ["Platform.Workflows"] = new[] { "View", "Create", "Edit", "Delete" },
+            ["Platform.Dashboards"] = new[] { "View", "Create", "Edit", "Delete" },
+            ["Platform.Reports"] = new[] { "View", "Create", "Edit", "Delete", "Export" },
+            ["Platform.Documents"] = new[] { "View", "Create", "Edit", "Delete", "Generate" },
+            ["Platform.OrgGraph"] = new[] { "View", "Create", "Edit", "Delete" },
+            ["Platform.CompanyConfig"] = new[] { "View", "Create", "Edit", "Delete" },
             ["Platform.Admin"] = new[] { "View" }
         };
 

@@ -1,21 +1,29 @@
 using AutoMapper;
 using HR.Domain.Engines.Audit;
 using HR.Domain.Engines.Automation;
+using HR.Domain.Engines.CompanyConfig;
 using HR.Domain.Engines.Dashboards;
+using HR.Domain.Engines.Documents;
 using HR.Domain.Engines.Forms;
 using HR.Domain.Engines.Metadata;
 using HR.Domain.Engines.ObjectRegistry;
+using HR.Domain.Engines.OrgGraph;
 using HR.Domain.Engines.Permissions;
+using HR.Domain.Engines.Reports;
 using HR.Domain.Engines.Timeline;
 using HR.Domain.Engines.Tokens;
 using HR.Domain.Engines.Workflows;
 using HR.Modules.Platform.DTOs.Audit;
 using HR.Modules.Platform.DTOs.Automation;
+using HR.Modules.Platform.DTOs.CompanyConfig;
 using HR.Modules.Platform.DTOs.Dashboards;
+using HR.Modules.Platform.DTOs.Documents;
 using HR.Modules.Platform.DTOs.Forms;
 using HR.Modules.Platform.DTOs.Metadata;
 using HR.Modules.Platform.DTOs.ObjectRegistry;
+using HR.Modules.Platform.DTOs.OrgGraph;
 using HR.Modules.Platform.DTOs.Permissions;
+using HR.Modules.Platform.DTOs.Reports;
 using HR.Modules.Platform.DTOs.Timeline;
 using HR.Modules.Platform.DTOs.Tokens;
 using HR.Modules.Platform.DTOs.Workflows;
@@ -93,9 +101,53 @@ public class PlatformMappingProfile : Profile
 
         // Dashboards
         CreateMap<DashboardDefinition, DashboardDefinitionDto>();
+        CreateMap<DashboardCategory, DashboardCategoryDto>();
+        CreateMap<DashboardTemplate, DashboardTemplateDto>();
+        CreateMap<DashboardShare, DashboardShareDto>();
         CreateMap<DashboardWidget, DashboardWidgetDto>()
             .ForMember(d => d.WidgetType, opt => opt.MapFrom(s => s.WidgetType.ToString()));
+        CreateMap<WidgetDefinition, WidgetDefinitionDto>();
+        CreateMap<WidgetDataSource, WidgetDataSourceDto>();
+        CreateMap<WidgetDrilldown, WidgetDrilldownDto>();
         CreateMap<WidgetLayout, WidgetLayoutDto>();
         CreateMap<WidgetFilter, WidgetFilterDto>();
+
+        // Reports
+        CreateMap<ReportDefinition, ReportDefinitionDto>();
+        CreateMap<ReportTemplate, ReportTemplateDto>();
+        CreateMap<ReportField, ReportFieldDto>();
+        CreateMap<ReportRelationship, ReportRelationshipDto>();
+        CreateMap<ReportFilter, ReportFilterDto>();
+        CreateMap<ReportGrouping, ReportGroupingDto>();
+        CreateMap<ReportSorting, ReportSortingDto>();
+        CreateMap<ReportSchedule, ReportScheduleDto>();
+        CreateMap<ReportShare, ReportShareDto>();
+
+        // Documents
+        CreateMap<DocumentTemplate, DocumentTemplateDto>();
+        CreateMap<DocumentTemplateVersion, DocumentTemplateVersionDto>();
+        CreateMap<DocumentTemplateToken, DocumentTemplateTokenDto>();
+        CreateMap<GeneratedDocument, GeneratedDocumentDto>();
+        CreateMap<CompanyBranding, CompanyBrandingDto>();
+
+        // Organization Graph
+        CreateMap<OrgNode, OrgNodeDto>();
+        CreateMap<OrgEdge, OrgEdgeDto>();
+        CreateMap<OrgGraphLayout, OrgGraphLayoutDto>();
+        CreateMap<EmployeeReportingLine, EmployeeReportingLineDto>();
+
+        // Workflow Enhancement
+        CreateMap<WorkflowDynamicApprover, WorkflowDynamicApproverDto>();
+        CreateMap<WorkflowDynamicCondition, WorkflowDynamicConditionDto>();
+        CreateMap<WorkflowAction, WorkflowActionDto>();
+        CreateMap<WorkflowSimulation, WorkflowSimulationDto>();
+
+        // Company Configuration
+        CreateMap<CompanyProfile, CompanyProfileDto>();
+        CreateMap<Position, PositionDto>();
+        CreateMap<Grade, GradeDto>();
+        CreateMap<CostCenter, CostCenterDto>();
+        CreateMap<CalendarSetting, CalendarSettingDto>();
+        CreateMap<FiscalPeriod, FiscalPeriodDto>();
     }
 }
