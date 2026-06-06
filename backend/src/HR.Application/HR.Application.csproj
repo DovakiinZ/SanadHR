@@ -18,4 +18,10 @@
     <ProjectReference Include="..\HR.Domain\HR.Domain.csproj" />
   </ItemGroup>
 
+  <!-- BaseApiController + RequirePermissionAttribute live here (in HR.Api.* namespaces) so
+       module controllers can use them without a Modules -> HR.Api circular reference. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
 </Project>

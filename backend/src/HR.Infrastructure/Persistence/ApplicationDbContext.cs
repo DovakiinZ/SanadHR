@@ -6,6 +6,7 @@ using HR.Domain.Engines.CompanyConfig;
 using HR.Domain.Engines.Dashboards;
 using HR.Domain.Engines.Documents;
 using HR.Domain.Engines.Forms;
+using HR.Domain.Engines.MasterData;
 using HR.Domain.Engines.Metadata;
 using HR.Domain.Engines.ObjectRegistry;
 using HR.Domain.Engines.OrgGraph;
@@ -20,6 +21,7 @@ using HR.Modules.Identity.Entities;
 using HR.Modules.Settings.Entities;
 using HR.Modules.Tasks.Entities;
 using HR.Modules.Tenancy.Entities;
+using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 
 namespace HR.Infrastructure.Persistence;
@@ -66,6 +68,9 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     // ===== Engine DbSets =====
+
+    // Master Data Engine (generic tenant-scoped reusable objects)
+    public DbSet<MasterDataItem> MasterDataItems => Set<MasterDataItem>();
 
     // Metadata Engine
     public DbSet<MetadataDefinition> MetadataDefinitions => Set<MetadataDefinition>();
@@ -201,9 +206,7 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     {
         var parameter = System.Linq.Expressions.Expression.Parameter(entityType, "e");
         var tenantIdProp = System.Linq.Expressions.Expression.Property(parameter, nameof(TenantEntity.TenantId));
-        var currentTenantId = System.Linq.Expressions.Expression.Property(
-            System.Linq.Expressions.Expression.Constant(this), nameof(_currentUser.TenantId));
-        // Actually we need to access _currentUser.TenantId
+        // Read the current tenant id from the injected _currentUser field on this context instance.
         var currentUserField = System.Linq.Expressions.Expression.Field(
             System.Linq.Expressions.Expression.Constant(this), "_currentUser");
         var tenantIdValue = System.Linq.Expressions.Expression.Property(currentUserField, nameof(ICurrentUserService.TenantId));

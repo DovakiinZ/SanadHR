@@ -36,6 +36,7 @@ public static class SeedData
             ["Platform.Documents"] = new[] { "View", "Create", "Edit", "Delete", "Generate" },
             ["Platform.OrgGraph"] = new[] { "View", "Create", "Edit", "Delete" },
             ["Platform.CompanyConfig"] = new[] { "View", "Create", "Edit", "Delete" },
+            ["Platform.MasterData"] = new[] { "View", "Create", "Edit", "Delete" },
             ["Platform.Admin"] = new[] { "View" }
         };
 

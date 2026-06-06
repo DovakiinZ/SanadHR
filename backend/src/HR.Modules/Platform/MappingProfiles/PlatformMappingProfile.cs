@@ -1,3 +1,4 @@
+using System.Text.Json;
 using AutoMapper;
 using HR.Domain.Engines.Audit;
 using HR.Domain.Engines.Automation;
@@ -5,6 +6,7 @@ using HR.Domain.Engines.CompanyConfig;
 using HR.Domain.Engines.Dashboards;
 using HR.Domain.Engines.Documents;
 using HR.Domain.Engines.Forms;
+using HR.Domain.Engines.MasterData;
 using HR.Domain.Engines.Metadata;
 using HR.Domain.Engines.ObjectRegistry;
 using HR.Domain.Engines.OrgGraph;
@@ -19,6 +21,7 @@ using HR.Modules.Platform.DTOs.CompanyConfig;
 using HR.Modules.Platform.DTOs.Dashboards;
 using HR.Modules.Platform.DTOs.Documents;
 using HR.Modules.Platform.DTOs.Forms;
+using HR.Modules.Platform.DTOs.MasterData;
 using HR.Modules.Platform.DTOs.Metadata;
 using HR.Modules.Platform.DTOs.ObjectRegistry;
 using HR.Modules.Platform.DTOs.OrgGraph;
@@ -149,5 +152,26 @@ public class PlatformMappingProfile : Profile
         CreateMap<CostCenter, CostCenterDto>();
         CreateMap<CalendarSetting, CalendarSettingDto>();
         CreateMap<FiscalPeriod, FiscalPeriodDto>();
+
+        // Master Data Engine
+        CreateMap<MasterDataItem, MasterDataItemDto>()
+            .ForMember(d => d.Metadata, opt => opt.MapFrom(s => ParseMetadata(s.MetadataJson)));
+        CreateMap<MasterDataItem, LookupItemDto>()
+            .ForMember(d => d.Label, opt => opt.MapFrom(s =>
+                string.IsNullOrWhiteSpace(s.NameAr) ? s.NameEn : s.NameAr))
+            .ForMember(d => d.Metadata, opt => opt.MapFrom(s => ParseMetadata(s.MetadataJson)));
+    }
+
+    private static Dictionary<string, object>? ParseMetadata(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            return JsonSerializer.Deserialize<Dictionary<string, object>>(json);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 }

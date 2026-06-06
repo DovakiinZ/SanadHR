@@ -15,14 +15,16 @@ public class TaskMappingProfile : Profile
             .ForMember(d => d.Priority, opt => opt.MapFrom(s => s.Priority.ToString()))
             .ForMember(d => d.PriorityAr, opt => opt.MapFrom(s => MapPriorityAr(s.Priority)))
             .ForMember(d => d.Source, opt => opt.MapFrom(s => s.Source.ToString()))
-            .ForMember(d => d.Tags, opt => opt.MapFrom(s =>
-                s.Tags != null ? System.Text.Json.JsonSerializer.Deserialize<List<string>>(s.Tags) : null))
+            .ForMember(d => d.Tags, opt => opt.MapFrom(s => MapTags(s.Tags)))
             .ForMember(d => d.AssigneeName, opt => opt.Ignore());
 
         CreateMap<HrTaskChecklist, ChecklistItemDto>();
         CreateMap<HrTaskComment, CommentDto>();
         CreateMap<HrTaskActivity, ActivityDto>();
     }
+
+    private static List<string>? MapTags(string? tags) =>
+        string.IsNullOrWhiteSpace(tags) ? null : System.Text.Json.JsonSerializer.Deserialize<List<string>>(tags);
 
     private static string MapStatusAr(HrTaskStatus status) => status switch
     {

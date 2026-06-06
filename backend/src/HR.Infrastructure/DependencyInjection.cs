@@ -27,7 +27,9 @@ public static class DependencyInjection
         var redisConnection = configuration.GetConnectionString("Redis");
         if (!string.IsNullOrEmpty(redisConnection))
         {
-            services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect(redisConnection));
+            // Connect lazily on first use — avoids failing host startup (and EF design-time tooling)
+            // when Redis isn't running.
+            services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnection));
             services.AddScoped<ICacheService, RedisCacheService>();
         }
 

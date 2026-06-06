@@ -11,6 +11,7 @@ using HR.Infrastructure.Engines.Permissions;
 using HR.Infrastructure.Engines.Timeline;
 using HR.Infrastructure.Engines.Tokens;
 using HR.Infrastructure.Engines.Workflows;
+using HR.Modules.Platform.Services;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace HR.Modules.Platform;
@@ -29,6 +30,10 @@ public static class DependencyInjection
         services.AddScoped<IAuditEngine, AuditEngine>();
         services.AddScoped<ITimelineEngine, TimelineEngine>();
         services.AddScoped<ITokenResolver, TokenResolver>();
+
+        // Master Data Engine services
+        services.AddScoped<ILookupService, LookupService>();
+        services.AddScoped<IUsageTrackingService, UsageTrackingService>();
 
         return services;
     }
