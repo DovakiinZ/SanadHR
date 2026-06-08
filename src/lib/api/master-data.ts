@@ -36,6 +36,17 @@ export interface MasterDataItemInput {
   icon?: string;
   sortOrder?: number;
   isActive?: boolean;
+  metadata?: string; // JSON string of type-specific rules/behavior (MetadataJson)
+}
+
+// Parse/serialize the MetadataJson blob that rich config types store their rules in.
+export function parseMetadata<T>(item: { metadata?: string | null }, fallback: T): T {
+  if (!item.metadata) return fallback;
+  try {
+    return { ...fallback, ...(JSON.parse(item.metadata) as Partial<T>) };
+  } catch {
+    return fallback;
+  }
 }
 
 const BASE = "/api/platform/master-data";
