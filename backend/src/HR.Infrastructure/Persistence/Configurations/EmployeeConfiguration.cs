@@ -18,9 +18,6 @@ public class EmployeeConfiguration : IEntityTypeConfiguration<Employee>
         builder.Property(x => x.Email).HasMaxLength(256).IsRequired();
         builder.Property(x => x.Phone).HasMaxLength(20);
         builder.Property(x => x.NationalId).HasMaxLength(20);
-        builder.Property(x => x.Nationality).HasMaxLength(50);
-        builder.Property(x => x.JobTitle).HasMaxLength(200);
-        builder.Property(x => x.JobTitleAr).HasMaxLength(200);
         builder.Property(x => x.BasicSalary).HasColumnType("decimal(18,2)");
         builder.Property(x => x.Currency).HasMaxLength(10);
         builder.Property(x => x.BankName).HasMaxLength(200);
@@ -30,5 +27,8 @@ public class EmployeeConfiguration : IEntityTypeConfiguration<Employee>
         builder.HasIndex(x => x.TenantId);
         builder.HasIndex(x => new { x.TenantId, x.EmployeeNumber }).IsUnique();
         builder.HasIndex(x => new { x.TenantId, x.Email }).IsUnique();
+        builder.HasIndex(x => x.JobTitleId);
+        builder.HasIndex(x => x.NationalityId);
+        builder.HasIndex(x => x.ContractTypeId);
     }
 }

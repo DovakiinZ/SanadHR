@@ -1,5 +1,3 @@
-using AutoMapper;
-using AutoMapper.QueryableExtensions;
 using HR.Application.Common.Models;
 using HR.Infrastructure.Persistence;
 using HR.Modules.Employees.DTOs;
@@ -11,12 +9,10 @@ namespace HR.Modules.Employees.Queries;
 public class GetEmployeesQueryHandler : IRequestHandler<GetEmployeesQuery, PaginatedList<EmployeeDto>>
 {
     private readonly ApplicationDbContext _context;
-    private readonly IMapper _mapper;
 
-    public GetEmployeesQueryHandler(ApplicationDbContext context, IMapper mapper)
+    public GetEmployeesQueryHandler(ApplicationDbContext context)
     {
         _context = context;
-        _mapper = mapper;
     }
 
     public async Task<PaginatedList<EmployeeDto>> Handle(GetEmployeesQuery request, CancellationToken cancellationToken)
@@ -40,12 +36,13 @@ public class GetEmployeesQueryHandler : IRequestHandler<GetEmployeesQuery, Pagin
 
         var totalCount = await query.CountAsync(cancellationToken);
 
-        var items = await query
+        var paged = query
             .OrderByDescending(e => e.CreatedAt)
             .Skip((request.PageNumber - 1) * request.PageSize)
-            .Take(request.PageSize)
-            .ProjectTo<EmployeeDto>(_mapper.ConfigurationProvider)
-            .ToListAsync(cancellationToken);
+            .Take(request.PageSize);
+
+        var items = await EmployeeProjection.MapAsync(paged, _context, cancellationToken);
+        items = items.OrderByDescending(e => e.CreatedAt).ToList();
 
         return new PaginatedList<EmployeeDto>
         {

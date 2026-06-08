@@ -49,8 +49,23 @@ public class UsageTrackingService : IUsageTrackingService
     ///         .ExecuteUpdateAsync(s => s.SetProperty(e => e.JobTitleId, dst), ct))
     /// </code>
     /// </summary>
-    private static readonly IReadOnlyList<MasterDataReference> References =
-        Array.Empty<MasterDataReference>();
+    private static readonly IReadOnlyList<MasterDataReference> References = new[]
+    {
+        new MasterDataReference(MasterDataObjectType.JobTitle, "الموظفون",
+            (db, id, ct) => db.Employees.CountAsync(e => e.JobTitleId == id, ct),
+            (db, src, dst, ct) => db.Employees.Where(e => e.JobTitleId == src)
+                .ExecuteUpdateAsync(s => s.SetProperty(e => e.JobTitleId, dst), ct)),
+
+        new MasterDataReference(MasterDataObjectType.Nationality, "الموظفون",
+            (db, id, ct) => db.Employees.CountAsync(e => e.NationalityId == id, ct),
+            (db, src, dst, ct) => db.Employees.Where(e => e.NationalityId == src)
+                .ExecuteUpdateAsync(s => s.SetProperty(e => e.NationalityId, dst), ct)),
+
+        new MasterDataReference(MasterDataObjectType.ContractType, "الموظفون",
+            (db, id, ct) => db.Employees.CountAsync(e => e.ContractTypeId == id, ct),
+            (db, src, dst, ct) => db.Employees.Where(e => e.ContractTypeId == src)
+                .ExecuteUpdateAsync(s => s.SetProperty(e => e.ContractTypeId, dst), ct)),
+    };
 
     private static IEnumerable<MasterDataReference> For(string objectType) =>
         References.Where(r => r.ObjectType == objectType);

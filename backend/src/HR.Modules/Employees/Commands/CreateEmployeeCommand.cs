@@ -1,4 +1,3 @@
-using HR.Application.Common.Models;
 using HR.Domain.Enums;
 using HR.Modules.Employees.DTOs;
 using MediatR;
@@ -17,11 +16,10 @@ public record CreateEmployeeCommand : IRequest<EmployeeDto>
     public Gender Gender { get; init; }
     public DateTime DateOfBirth { get; init; }
     public string? NationalId { get; init; }
-    public string? Nationality { get; init; }
-    public ContractType ContractType { get; init; }
+    public Guid? NationalityId { get; init; }
+    public Guid? ContractTypeId { get; init; }
     public DateTime HireDate { get; init; }
-    public string? JobTitle { get; init; }
-    public string? JobTitleAr { get; init; }
+    public Guid? JobTitleId { get; init; }
     public Guid? DepartmentId { get; init; }
     public Guid? BranchId { get; init; }
     public Guid? ManagerId { get; init; }

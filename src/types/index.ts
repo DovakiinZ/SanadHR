@@ -17,6 +17,13 @@ export interface Employee {
   avatar?: string;
   leaveBalance: number;
   attendanceRate: number;
+  // Governed reference ids (for prefilling edit-form dropdowns)
+  jobTitleId?: string | null;
+  nationalityId?: string | null;
+  contractTypeId?: string | null;
+  departmentId?: string | null;
+  branchId?: string | null;
+  managerId?: string | null;
 }
 
 export interface Department {

@@ -15,13 +15,13 @@ public class Employee : TenantEntity
     public Gender Gender { get; set; }
     public DateTime DateOfBirth { get; set; }
     public string? NationalId { get; set; }
-    public string? Nationality { get; set; }
+    // Governed master-data references (MasterDataItem ids) — no free text.
+    public Guid? NationalityId { get; set; }
     public EmployeeStatus Status { get; set; } = EmployeeStatus.Active;
-    public ContractType ContractType { get; set; } = ContractType.FullTime;
+    public Guid? ContractTypeId { get; set; }
     public DateTime HireDate { get; set; }
     public DateTime? TerminationDate { get; set; }
-    public string? JobTitle { get; set; }
-    public string? JobTitleAr { get; set; }
+    public Guid? JobTitleId { get; set; }
     public Guid? DepartmentId { get; set; }
     public Guid? BranchId { get; set; }
     public Guid? ManagerId { get; set; }

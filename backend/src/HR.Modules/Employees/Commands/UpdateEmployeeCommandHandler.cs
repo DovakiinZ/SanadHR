@@ -1,7 +1,7 @@
-using AutoMapper;
 using HR.Application.Common.Exceptions;
 using HR.Infrastructure.Persistence;
 using HR.Modules.Employees.DTOs;
+using HR.Modules.Employees.Queries;
 using MediatR;
 
 namespace HR.Modules.Employees.Commands;
@@ -9,12 +9,10 @@ namespace HR.Modules.Employees.Commands;
 public class UpdateEmployeeCommandHandler : IRequestHandler<UpdateEmployeeCommand, EmployeeDto>
 {
     private readonly ApplicationDbContext _context;
-    private readonly IMapper _mapper;
 
-    public UpdateEmployeeCommandHandler(ApplicationDbContext context, IMapper mapper)
+    public UpdateEmployeeCommandHandler(ApplicationDbContext context)
     {
         _context = context;
-        _mapper = mapper;
     }
 
     public async Task<EmployeeDto> Handle(UpdateEmployeeCommand request, CancellationToken cancellationToken)
@@ -31,17 +29,19 @@ public class UpdateEmployeeCommandHandler : IRequestHandler<UpdateEmployeeComman
         employee.Gender = request.Gender;
         employee.DateOfBirth = request.DateOfBirth;
         employee.NationalId = request.NationalId;
-        employee.Nationality = request.Nationality;
+        employee.NationalityId = request.NationalityId;
         employee.Status = request.Status;
-        employee.ContractType = request.ContractType;
-        employee.JobTitle = request.JobTitle;
-        employee.JobTitleAr = request.JobTitleAr;
+        employee.ContractTypeId = request.ContractTypeId;
+        employee.JobTitleId = request.JobTitleId;
         employee.DepartmentId = request.DepartmentId;
         employee.BranchId = request.BranchId;
         employee.ManagerId = request.ManagerId;
         employee.BasicSalary = request.BasicSalary;
 
         await _context.SaveChangesAsync(cancellationToken);
-        return _mapper.Map<EmployeeDto>(employee);
+
+        var result = await EmployeeProjection.MapAsync(
+            _context.Employees.Where(e => e.Id == employee.Id), _context, cancellationToken);
+        return result.First();
     }
 }

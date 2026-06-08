@@ -16,11 +16,10 @@ public record UpdateEmployeeCommand : IRequest<EmployeeDto>
     public Gender Gender { get; init; }
     public DateTime DateOfBirth { get; init; }
     public string? NationalId { get; init; }
-    public string? Nationality { get; init; }
+    public Guid? NationalityId { get; init; }
     public EmployeeStatus Status { get; init; }
-    public ContractType ContractType { get; init; }
-    public string? JobTitle { get; init; }
-    public string? JobTitleAr { get; init; }
+    public Guid? ContractTypeId { get; init; }
+    public Guid? JobTitleId { get; init; }
     public Guid? DepartmentId { get; init; }
     public Guid? BranchId { get; init; }
     public Guid? ManagerId { get; init; }

@@ -1,7 +1,8 @@
 import { apiFetch } from "../api-client";
 import { Employee } from "@/types";
 
-// Raw backend DTO (camelCase JSON from the .NET API).
+// Raw backend DTO (camelCase JSON). Governed fields are master-data / Core references
+// (ids) resolved to Arabic/English labels by the API.
 export interface ApiEmployee {
   id: string;
   employeeNumber: string;
@@ -17,13 +18,17 @@ export interface ApiEmployee {
   genderAr: string;
   dateOfBirth: string;
   nationalId?: string | null;
+  nationalityId?: string | null;
   nationality?: string | null;
+  nationalityAr?: string | null;
   status: string;
   statusAr: string;
-  contractType: string;
-  contractTypeAr: string;
+  contractTypeId?: string | null;
+  contractType?: string | null;
+  contractTypeAr?: string | null;
   hireDate: string;
   terminationDate?: string | null;
+  jobTitleId?: string | null;
   jobTitle?: string | null;
   jobTitleAr?: string | null;
   departmentId?: string | null;
@@ -48,7 +53,7 @@ interface PaginatedResult<T> {
   hasNextPage: boolean;
 }
 
-// Form input collected by the (Arabic) Employee form.
+// Form input — governed selects carry ids, not free text.
 export interface EmployeeInput {
   employeeNumber?: string;
   name: string;
@@ -57,22 +62,17 @@ export interface EmployeeInput {
   email: string;
   dateOfBirth: string;
   gender: string; // "ذكر" | "أنثى"
-  nationality: string;
-  position: string;
+  nationalityId?: string;
+  jobTitleId?: string;
+  contractTypeId?: string;
+  departmentId?: string;
+  branchId?: string;
   joinDate: string;
-  contractType: string; // "دوام كامل" | "دوام جزئي" | "عقد مؤقت"
   salary: number;
   status?: string; // edit only — backend statusAr string
 }
 
-// Enum maps — values MUST match the backend integer enum values.
 const GENDER_TO_INT: Record<string, number> = { "ذكر": 1, "أنثى": 2 };
-const CONTRACT_TO_INT: Record<string, number> = {
-  "دوام كامل": 1,
-  "دوام جزئي": 2,
-  "عقد مؤقت": 3,
-};
-// Keyed on the backend's exact Arabic status strings (EmployeeMappingProfile).
 const STATUS_TO_INT: Record<string, number> = {
   "نشط": 1,
   "في إجازة": 2,
@@ -94,7 +94,13 @@ function splitName(name: string): { first: string; last: string } {
   return { first, last };
 }
 
-// Map backend DTO -> existing Arabic display Employee (keeps the current UI intact).
+// Empty string → null so the backend (Guid?) doesn't choke on "".
+function idOrNull(v?: string): string | null {
+  return v && v.trim() ? v : null;
+}
+
+// Map backend DTO -> existing Arabic display Employee (keeps table/profile UI intact),
+// carrying the reference ids so the edit form can prefill its dropdowns.
 export function toDisplayEmployee(a: ApiEmployee): Employee {
   return {
     id: a.id,
@@ -105,15 +111,21 @@ export function toDisplayEmployee(a: ApiEmployee): Employee {
     nationalId: a.nationalId ?? "",
     dateOfBirth: a.dateOfBirth ? a.dateOfBirth.slice(0, 10) : "",
     gender: (a.genderAr as Employee["gender"]) || "ذكر",
-    nationality: a.nationality ?? "",
+    nationality: a.nationalityAr || a.nationality || "—",
     department: a.departmentName ?? "—",
     position: a.jobTitleAr || a.jobTitle || "—",
     joinDate: a.hireDate ? a.hireDate.slice(0, 10) : "",
-    contractType: (a.contractTypeAr as Employee["contractType"]) || "دوام كامل",
+    contractType: (a.contractTypeAr || a.contractType || "—") as Employee["contractType"],
     salary: a.basicSalary,
     status: (a.statusAr as Employee["status"]) || "نشط",
     leaveBalance: 0,
     attendanceRate: 0,
+    jobTitleId: a.jobTitleId ?? null,
+    nationalityId: a.nationalityId ?? null,
+    contractTypeId: a.contractTypeId ?? null,
+    departmentId: a.departmentId ?? null,
+    branchId: a.branchId ?? null,
+    managerId: a.managerId ?? null,
   };
 }
 
@@ -148,11 +160,12 @@ export async function createEmployee(input: EmployeeInput): Promise<ApiEmployee>
     gender: GENDER_TO_INT[input.gender] ?? 1,
     dateOfBirth: toIsoUtc(input.dateOfBirth),
     nationalId: input.nationalId,
-    nationality: input.nationality,
-    contractType: CONTRACT_TO_INT[input.contractType] ?? 1,
+    nationalityId: idOrNull(input.nationalityId),
+    contractTypeId: idOrNull(input.contractTypeId),
     hireDate: toIsoUtc(input.joinDate),
-    jobTitle: input.position,
-    jobTitleAr: input.position,
+    jobTitleId: idOrNull(input.jobTitleId),
+    departmentId: idOrNull(input.departmentId),
+    branchId: idOrNull(input.branchId),
     basicSalary: input.salary,
     currency: "SAR",
   };
@@ -172,11 +185,12 @@ export async function updateEmployee(id: string, input: EmployeeInput): Promise<
     gender: GENDER_TO_INT[input.gender] ?? 1,
     dateOfBirth: toIsoUtc(input.dateOfBirth),
     nationalId: input.nationalId,
-    nationality: input.nationality,
+    nationalityId: idOrNull(input.nationalityId),
     status: STATUS_TO_INT[input.status ?? "نشط"] ?? 1,
-    contractType: CONTRACT_TO_INT[input.contractType] ?? 1,
-    jobTitle: input.position,
-    jobTitleAr: input.position,
+    contractTypeId: idOrNull(input.contractTypeId),
+    jobTitleId: idOrNull(input.jobTitleId),
+    departmentId: idOrNull(input.departmentId),
+    branchId: idOrNull(input.branchId),
     basicSalary: input.salary,
   };
   return apiFetch<ApiEmployee>(`/api/employees/${id}`, { method: "PUT", body: payload });

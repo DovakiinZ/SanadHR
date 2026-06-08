@@ -1,7 +1,7 @@
-using AutoMapper;
 using HR.Infrastructure.Persistence;
 using HR.Modules.Employees.DTOs;
 using HR.Modules.Employees.Entities;
+using HR.Modules.Employees.Queries;
 using MediatR;
 
 namespace HR.Modules.Employees.Commands;
@@ -9,12 +9,10 @@ namespace HR.Modules.Employees.Commands;
 public class CreateEmployeeCommandHandler : IRequestHandler<CreateEmployeeCommand, EmployeeDto>
 {
     private readonly ApplicationDbContext _context;
-    private readonly IMapper _mapper;
 
-    public CreateEmployeeCommandHandler(ApplicationDbContext context, IMapper mapper)
+    public CreateEmployeeCommandHandler(ApplicationDbContext context)
     {
         _context = context;
-        _mapper = mapper;
     }
 
     public async Task<EmployeeDto> Handle(CreateEmployeeCommand request, CancellationToken cancellationToken)
@@ -31,11 +29,10 @@ public class CreateEmployeeCommandHandler : IRequestHandler<CreateEmployeeComman
             Gender = request.Gender,
             DateOfBirth = request.DateOfBirth,
             NationalId = request.NationalId,
-            Nationality = request.Nationality,
-            ContractType = request.ContractType,
+            NationalityId = request.NationalityId,
+            ContractTypeId = request.ContractTypeId,
             HireDate = request.HireDate,
-            JobTitle = request.JobTitle,
-            JobTitleAr = request.JobTitleAr,
+            JobTitleId = request.JobTitleId,
             DepartmentId = request.DepartmentId,
             BranchId = request.BranchId,
             ManagerId = request.ManagerId,
@@ -46,6 +43,8 @@ public class CreateEmployeeCommandHandler : IRequestHandler<CreateEmployeeComman
         _context.Employees.Add(employee);
         await _context.SaveChangesAsync(cancellationToken);
 
-        return _mapper.Map<EmployeeDto>(employee);
+        var result = await EmployeeProjection.MapAsync(
+            _context.Employees.Where(e => e.Id == employee.Id), _context, cancellationToken);
+        return result.First();
     }
 }
