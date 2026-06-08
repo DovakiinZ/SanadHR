@@ -8,9 +8,19 @@
 import { toast } from "sonner";
 import { getAccessToken, clearSession } from "./auth-storage";
 
-export const API_BASE_URL =
-  (process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "")) ||
-  "https://hrcloud-api-v4xd.azurewebsites.net";
+const DEFAULT_API_BASE_URL = "https://hrcloud-api-v4xd.azurewebsites.net";
+
+// Resolve + sanitize the base URL. Env values can pick up a UTF-8 BOM (﻿),
+// zero-width space (​) or stray whitespace (e.g. from CLI piping); strip them.
+// Fall back to the default unless the result is a real http(s) URL.
+function resolveBaseUrl(): string {
+  const raw = (process.env.NEXT_PUBLIC_API_URL ?? "")
+    .replace(/[﻿​\s]/g, "")
+    .replace(/\/+$/, "");
+  return /^https?:\/\//i.test(raw) ? raw : DEFAULT_API_BASE_URL;
+}
+
+export const API_BASE_URL = resolveBaseUrl();
 
 export class ApiError extends Error {
   status: number;

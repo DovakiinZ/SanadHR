@@ -1,10 +1,22 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Bell, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { getUser, AuthUser } from "@/lib/auth-storage";
 
 export function Topbar() {
+  const [user, setUser] = useState<AuthUser | null>(null);
+
+  useEffect(() => {
+    setUser(getUser());
+  }, []);
+
+  const name = user?.fullName || "—";
+  const email = user?.email || "";
+  const initials = name && name !== "—" ? name.trim().charAt(0) : "؟";
+
   return (
     <header className="sticky top-0 z-30 h-14 border-b border-border bg-background flex items-center justify-between px-6">
       {/* Search */}
@@ -25,12 +37,12 @@ export function Topbar() {
 
         <div className="flex items-center gap-3">
           <div className="text-left">
-            <p className="text-sm font-medium leading-none">عبدالله المدير</p>
-            <p className="text-xs text-muted-foreground">مدير النظام</p>
+            <p className="text-sm font-medium leading-none">{name}</p>
+            <p className="text-xs text-muted-foreground">{email}</p>
           </div>
           <Avatar className="h-8 w-8">
             <AvatarFallback className="bg-primary text-primary-foreground text-xs font-bold">
-              عم
+              {initials}
             </AvatarFallback>
           </Avatar>
         </div>
