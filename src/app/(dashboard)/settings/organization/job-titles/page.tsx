@@ -128,7 +128,7 @@ export default function JobTitlesPage() {
         nameEn: form.nameEn.trim(),
         description: form.description.trim() || undefined,
         isActive: form.isActive,
-        metadata: JSON.stringify(meta),
+        metadata: meta as unknown as Record<string, unknown>,
       };
       if (editing) { await updateMasterDataItem(editing.id, payload); toast.success("تم تحديث المسمى"); }
       else { await createMasterDataItem("JobTitle", payload); toast.success("تمت إضافة المسمى"); }

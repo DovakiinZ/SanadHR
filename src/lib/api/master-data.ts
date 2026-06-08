@@ -22,7 +22,7 @@ export interface MasterDataItem {
   sortOrder: number;
   isSystemDefault: boolean;
   isActive: boolean;
-  metadata?: string | null;
+  metadata?: Record<string, unknown> | null;
   createdAt?: string;
   updatedAt?: string | null;
 }
@@ -36,17 +36,13 @@ export interface MasterDataItemInput {
   icon?: string;
   sortOrder?: number;
   isActive?: boolean;
-  metadata?: string; // JSON string of type-specific rules/behavior (MetadataJson)
+  metadata?: Record<string, unknown>; // type-specific rules/behavior (sent as a JSON object)
 }
 
-// Parse/serialize the MetadataJson blob that rich config types store their rules in.
-export function parseMetadata<T>(item: { metadata?: string | null }, fallback: T): T {
+// Merge an item's metadata object (Dictionary<string,object> from the API) onto a typed fallback.
+export function parseMetadata<T>(item: { metadata?: Record<string, unknown> | null }, fallback: T): T {
   if (!item.metadata) return fallback;
-  try {
-    return { ...fallback, ...(JSON.parse(item.metadata) as Partial<T>) };
-  } catch {
-    return fallback;
-  }
+  return { ...fallback, ...(item.metadata as Partial<T>) };
 }
 
 const BASE = "/api/platform/master-data";
