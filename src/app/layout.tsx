@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
@@ -16,6 +17,14 @@ export default function RootLayout({
     <html lang="ar" dir="rtl" className="dark h-full antialiased">
       <body className="min-h-full flex flex-col font-sans">
         <TooltipProvider>{children}</TooltipProvider>
+        <Toaster
+          position="top-center"
+          dir="rtl"
+          theme="dark"
+          richColors
+          closeButton
+          toastOptions={{ style: { fontFamily: "inherit" } }}
+        />
       </body>
     </html>
   );

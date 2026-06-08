@@ -21,6 +21,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { logout } from "@/lib/api/auth";
 
 const navItems = [
   { label: "لوحة التحكم", href: "/dashboard", icon: LayoutDashboard },
@@ -40,8 +41,7 @@ export function Sidebar() {
   const pathname = usePathname();
 
   const handleLogout = () => {
-    localStorage.removeItem("hr_auth");
-    window.location.href = "/login";
+    logout();
   };
 
   return (

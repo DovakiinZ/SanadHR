@@ -4,12 +4,17 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { departments } from "@/lib/mock-data";
+import { createEmployee, updateEmployee, EmployeeInput } from "@/lib/api/employees";
+import { ApiError } from "@/lib/api-client";
+import { Employee } from "@/types";
 
 const employeeSchema = z.object({
+  employeeNumber: z.string().optional(),
   name: z.string().min(2, "الاسم مطلوب"),
   nationalId: z.string().min(10, "رقم الهوية يجب أن يكون 10 أرقام").max(10),
   phone: z.string().min(10, "رقم الجوال مطلوب"),
@@ -17,41 +22,94 @@ const employeeSchema = z.object({
   dateOfBirth: z.string().min(1, "تاريخ الميلاد مطلوب"),
   gender: z.enum(["ذكر", "أنثى"], { message: "الجنس مطلوب" }),
   nationality: z.string().min(1, "الجنسية مطلوبة"),
-  department: z.string().min(1, "القسم مطلوب"),
+  department: z.string().optional(),
   position: z.string().min(1, "المسمى الوظيفي مطلوب"),
   joinDate: z.string().min(1, "تاريخ الانضمام مطلوب"),
   contractType: z.enum(["دوام كامل", "دوام جزئي", "عقد مؤقت"], {
     message: "نوع العقد مطلوب",
   }),
-  salary: z.string().min(1, "الراتب مطلوب").transform(Number),
+  salary: z.string().min(1, "الراتب مطلوب"),
+  status: z.string().optional(),
 });
 
 type EmployeeFormData = z.infer<typeof employeeSchema>;
 
-export function EmployeeForm() {
+const STATUS_OPTIONS = ["نشط", "في إجازة", "موقوف", "منتهي", "مستقيل"];
+
+function normalizeContract(value: string): "دوام كامل" | "دوام جزئي" | "عقد مؤقت" {
+  if (value === "دوام كامل" || value === "دوام جزئي" || value === "عقد مؤقت") return value;
+  if (value === "عقد" || value === "مؤقت") return "عقد مؤقت";
+  return "دوام كامل";
+}
+
+interface EmployeeFormProps {
+  mode?: "create" | "edit";
+  employeeId?: string;
+  initial?: Employee;
+}
+
+export function EmployeeForm({ mode = "create", employeeId, initial }: EmployeeFormProps) {
   const router = useRouter();
+  const isEdit = mode === "edit";
+
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } = useForm<EmployeeFormData>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(employeeSchema) as any,
+    defaultValues: initial
+      ? {
+          employeeNumber: initial.employeeId,
+          name: initial.name,
+          nationalId: initial.nationalId,
+          phone: initial.phone,
+          email: initial.email,
+          dateOfBirth: initial.dateOfBirth,
+          gender: initial.gender,
+          nationality: initial.nationality,
+          department: "",
+          position: initial.position === "—" ? "" : initial.position,
+          joinDate: initial.joinDate,
+          contractType: normalizeContract(initial.contractType),
+          salary: String(initial.salary),
+          status: initial.status || "نشط",
+        }
+      : { status: "نشط" },
   });
 
-  const onSubmit = (data: EmployeeFormData) => {
-    // Mock: store in localStorage
-    const existing = JSON.parse(localStorage.getItem("hr_new_employees") || "[]");
-    existing.push({
-      ...data,
-      id: `new-${Date.now()}`,
-      employeeId: `EMP-${String(24 + existing.length).padStart(3, "0")}`,
-      status: "نشط",
-      leaveBalance: 30,
-      attendanceRate: 100,
-    });
-    localStorage.setItem("hr_new_employees", JSON.stringify(existing));
-    router.push("/employees");
+  const onSubmit = async (data: EmployeeFormData) => {
+    const input: EmployeeInput = {
+      employeeNumber: data.employeeNumber,
+      name: data.name,
+      nationalId: data.nationalId,
+      phone: data.phone,
+      email: data.email,
+      dateOfBirth: data.dateOfBirth,
+      gender: data.gender,
+      nationality: data.nationality,
+      position: data.position,
+      joinDate: data.joinDate,
+      contractType: data.contractType,
+      salary: Number(data.salary),
+      status: data.status,
+    };
+    try {
+      if (isEdit && employeeId) {
+        await updateEmployee(employeeId, input);
+        toast.success("تم تحديث بيانات الموظف");
+      } else {
+        await createEmployee(input);
+        toast.success("تمت إضافة الموظف بنجاح");
+      }
+      router.push("/employees");
+      router.refresh();
+    } catch (err) {
+      if (!(err instanceof ApiError) || ![401, 403, 500].includes(err.status)) {
+        toast.error(err instanceof ApiError ? err.message : "تعذر حفظ بيانات الموظف");
+      }
+    }
   };
 
   return (
@@ -111,6 +169,15 @@ export function EmployeeForm() {
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           <div className="space-y-2">
+            <Label className="text-xs font-bold uppercase tracking-wider">الرقم الوظيفي</Label>
+            <Input
+              {...register("employeeNumber")}
+              disabled={isEdit}
+              placeholder={isEdit ? undefined : "تلقائي إن تُرك فارغاً"}
+              className="bg-secondary border-border disabled:opacity-60"
+            />
+          </div>
+          <div className="space-y-2">
             <Label className="text-xs font-bold uppercase tracking-wider">القسم</Label>
             <select {...register("department")} className="w-full h-9 bg-secondary border border-border px-3 text-sm text-foreground">
               <option value="">اختر القسم</option>
@@ -118,7 +185,7 @@ export function EmployeeForm() {
                 <option key={d.id} value={d.name}>{d.name}</option>
               ))}
             </select>
-            {errors.department && <p className="text-xs text-destructive">{errors.department.message}</p>}
+            <p className="text-[10px] text-muted-foreground">لا يُحفظ بعد — وحدة الأقسام قريباً</p>
           </div>
           <div className="space-y-2">
             <Label className="text-xs font-bold uppercase tracking-wider">المسمى الوظيفي</Label>
@@ -145,13 +212,23 @@ export function EmployeeForm() {
             <Input type="number" {...register("salary")} className="bg-secondary border-border" />
             {errors.salary && <p className="text-xs text-destructive">{errors.salary.message}</p>}
           </div>
+          {isEdit && (
+            <div className="space-y-2">
+              <Label className="text-xs font-bold uppercase tracking-wider">الحالة</Label>
+              <select {...register("status")} className="w-full h-9 bg-secondary border border-border px-3 text-sm text-foreground">
+                {STATUS_OPTIONS.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Actions */}
       <div className="flex items-center gap-3">
         <Button type="submit" disabled={isSubmitting} className="h-10 px-8 font-bold uppercase tracking-wider">
-          {isSubmitting ? "جاري الحفظ..." : "حفظ الموظف"}
+          {isSubmitting ? "جاري الحفظ..." : isEdit ? "حفظ التعديلات" : "حفظ الموظف"}
         </Button>
         <Button type="button" variant="outline" onClick={() => router.back()} className="h-10 px-8">
           إلغاء

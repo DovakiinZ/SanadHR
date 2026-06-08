@@ -3,28 +3,43 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { login } from "@/lib/api/auth";
+import { ApiError } from "@/lib/api-client";
 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError("");
     if (!email || !password) {
       setError("جميع الحقول مطلوبة");
       return;
     }
-    // Mock auth
-    localStorage.setItem(
-      "hr_auth",
-      JSON.stringify({ email, name: "عبدالله المدير", role: "admin" })
-    );
-    router.push("/dashboard");
+    setLoading(true);
+    try {
+      const user = await login(email, password);
+      toast.success(`مرحباً ${user.fullName}`);
+      router.push("/dashboard");
+    } catch (err) {
+      const message =
+        err instanceof ApiError
+          ? err.status === 404 || err.status === 403
+            ? "البريد الإلكتروني أو كلمة المرور غير صحيحة"
+            : err.message
+          : "تعذر تسجيل الدخول";
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -67,8 +82,8 @@ export default function LoginPage() {
           />
         </div>
 
-        <Button type="submit" className="w-full h-10 font-bold uppercase tracking-wider">
-          تسجيل الدخول
+        <Button type="submit" disabled={loading} className="w-full h-10 font-bold uppercase tracking-wider">
+          {loading ? "جاري تسجيل الدخول..." : "تسجيل الدخول"}
         </Button>
       </form>
 
