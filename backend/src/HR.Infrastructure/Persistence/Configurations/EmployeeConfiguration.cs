@@ -23,6 +23,10 @@ public class EmployeeConfiguration : IEntityTypeConfiguration<Employee>
         builder.Property(x => x.BankName).HasMaxLength(200);
         builder.Property(x => x.BankAccountNumber).HasMaxLength(50);
         builder.Property(x => x.Iban).HasMaxLength(50);
+        builder.Property(x => x.SalaryCardNumber).HasMaxLength(50);
+        builder.Property(x => x.CardProvider).HasMaxLength(100);
+        builder.Property(x => x.EmergencyContactName).HasMaxLength(150);
+        builder.Property(x => x.EmergencyContactPhone).HasMaxLength(20);
         builder.Property(x => x.City).HasMaxLength(100);
         builder.HasIndex(x => x.TenantId);
         builder.HasIndex(x => new { x.TenantId, x.EmployeeNumber }).IsUnique();
@@ -30,5 +34,22 @@ public class EmployeeConfiguration : IEntityTypeConfiguration<Employee>
         builder.HasIndex(x => x.JobTitleId);
         builder.HasIndex(x => x.NationalityId);
         builder.HasIndex(x => x.ContractTypeId);
+
+        builder.HasMany(x => x.Allowances)
+            .WithOne(a => a.Employee)
+            .HasForeignKey(a => a.EmployeeId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class EmployeeAllowanceConfiguration : IEntityTypeConfiguration<EmployeeAllowance>
+{
+    public void Configure(EntityTypeBuilder<EmployeeAllowance> builder)
+    {
+        builder.ToTable("employee_allowances");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Amount).HasColumnType("decimal(18,2)");
+        builder.HasIndex(x => x.TenantId);
+        builder.HasIndex(x => new { x.EmployeeId, x.AllowanceTypeId }).IsUnique();
     }
 }

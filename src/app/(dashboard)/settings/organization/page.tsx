@@ -1,11 +1,11 @@
 import Link from "next/link";
-import { ArrowRight, Network, Building, BriefcaseBusiness, Layers, Coins, ChevronLeft } from "lucide-react";
+import { ArrowRight, Network, Building, BriefcaseBusiness, Layers, Coins, Globe, ChevronLeft } from "lucide-react";
 
 const modules = [
-  { href: "/settings/organization/departments", title: "الأقسام", description: "هيكل الأقسام والتسلسل الإداري والمدراء", icon: Network },
+  { href: "/settings/organization/departments", title: "الأقسام", description: "هيكل الأقسام والتسلسل الإداري والمدراء + المخطط التنظيمي", icon: Network },
   { href: "/settings/organization/job-titles", title: "المسميات الوظيفية", description: "المسميات ومسؤولياتها ومهاراتها ومستنداتها", icon: BriefcaseBusiness },
-  { href: "/settings/organization/branches", title: "الفروع", description: "فروع المؤسسة ومواقعها", icon: Building },
-  { href: "/settings/organization/positions", title: "المناصب", description: "المناصب الوظيفية", icon: BriefcaseBusiness },
+  { href: "/settings/organization/branches", title: "الفروع", description: "فروع المؤسسة ومواقعها وإحداثياتها الجغرافية", icon: Building },
+  { href: "/settings/organization/nationalities", title: "الجنسيات", description: "الجنسيات المستخدمة في ملفات الموظفين", icon: Globe },
   { href: "/settings/organization/grades", title: "الدرجات الوظيفية", description: "درجات ومستويات الموظفين", icon: Layers },
   { href: "/settings/organization/cost-centers", title: "مراكز التكلفة", description: "مراكز التكلفة المحاسبية", icon: Coins },
 ];

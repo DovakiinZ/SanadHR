@@ -1,290 +1,328 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { Loader2, Upload, User } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { createEmployee, updateEmployee, EmployeeInput } from "@/lib/api/employees";
-import { getLookup, lookupLabel, LookupItem } from "@/lib/api/lookups";
-import { getDepartments, getBranches, orgLabel, OrgOption } from "@/lib/api/org";
 import { ApiError } from "@/lib/api-client";
+import {
+  ApiEmployee, EmployeeInput, createEmployee, updateEmployee, getEmployees,
+} from "@/lib/api/employees";
+import { getLookup, lookupLabel, LookupItem } from "@/lib/api/lookups";
+import { getDepartments, getBranches, OrgOption, orgLabel } from "@/lib/api/org";
+import { uploadFile, fileUrl } from "@/lib/api/files";
 import { Employee } from "@/types";
 
-const employeeSchema = z.object({
-  employeeNumber: z.string().optional(),
-  name: z.string().min(2, "الاسم مطلوب"),
-  nationalId: z.string().min(10, "رقم الهوية يجب أن يكون 10 أرقام").max(10),
-  phone: z.string().min(10, "رقم الجوال مطلوب"),
-  email: z.string().email("البريد الإلكتروني غير صالح"),
-  dateOfBirth: z.string().min(1, "تاريخ الميلاد مطلوب"),
-  gender: z.enum(["ذكر", "أنثى"], { message: "الجنس مطلوب" }),
-  nationalityId: z.string().min(1, "الجنسية مطلوبة"),
-  jobTitleId: z.string().min(1, "المسمى الوظيفي مطلوب"),
-  contractTypeId: z.string().min(1, "نوع العقد مطلوب"),
-  departmentId: z.string().optional(),
-  branchId: z.string().optional(),
-  joinDate: z.string().min(1, "تاريخ الانضمام مطلوب"),
-  salary: z.string().min(1, "الراتب مطلوب"),
-  status: z.string().optional(),
-});
-
-type EmployeeFormData = z.infer<typeof employeeSchema>;
-
-const STATUS_OPTIONS = ["نشط", "في إجازة", "موقوف", "منتهي", "مستقيل"];
-
-interface EmployeeFormProps {
-  mode?: "create" | "edit";
-  employeeId?: string;
-  initial?: Employee;
+function notifyError(err: unknown, fallback: string) {
+  if (!(err instanceof ApiError) || ![401, 403, 500].includes(err.status)) {
+    toast.error(err instanceof ApiError ? err.message : (err instanceof Error ? err.message : fallback));
+  }
 }
 
-export function EmployeeForm({ mode = "create", employeeId, initial }: EmployeeFormProps) {
+interface Props {
+  mode?: "create" | "edit";
+  employeeId?: string;
+  initial?: ApiEmployee;
+}
+
+const STATUS_OPTIONS = ["نشط", "في إجازة", "موقوف", "منتهي", "مستقيل"];
+const selectClass = "w-full h-9 bg-secondary border border-border px-3 text-sm text-foreground";
+
+// Hoisted to module scope — defining these inside the component would remount inputs
+// on every keystroke (focus loss).
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="border border-border bg-card">
+      <div className="px-5 py-3 border-b border-border text-xs font-bold uppercase tracking-wider text-primary">{title}</div>
+      <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">{children}</div>
+    </div>
+  );
+}
+function Field({ label, children, full }: { label: string; children: React.ReactNode; full?: boolean }) {
+  return (
+    <div className={`space-y-2 ${full ? "sm:col-span-2 lg:col-span-3" : ""}`}>
+      <Label className="text-xs font-bold uppercase tracking-wider">{label}</Label>
+      {children}
+    </div>
+  );
+}
+function LookupSelect({ value, onChange, items, placeholder }: { value: string; onChange: (v: string) => void; items: LookupItem[]; placeholder: string }) {
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} className={selectClass}>
+      <option value="">{placeholder}</option>
+      {items.map((i) => <option key={i.id} value={i.id}>{lookupLabel(i)}</option>)}
+    </select>
+  );
+}
+
+function emptyInput(): EmployeeInput {
+  return {
+    employeeNumber: "", firstNameAr: "", lastNameAr: "", firstName: "", lastName: "",
+    nationalId: "", phone: "", email: "", dateOfBirth: "", gender: "ذكر",
+    nationalityId: "", jobTitleId: "", contractTypeId: "", employmentTypeId: "",
+    departmentId: "", branchId: "", managerId: "", joinDate: "", status: "نشط",
+    address: "", city: "", emergencyContactName: "", emergencyContactPhone: "",
+    salary: 0, currency: "SAR", paymentMethodId: "", bankId: "", bankAccountNumber: "",
+    iban: "", salaryCardNumber: "", cardProvider: "", workLocationId: "",
+    leavePolicyId: "", payrollGroupId: "", photoUrl: "", notes: "", allowances: [],
+  };
+}
+
+function fromApi(a: ApiEmployee): EmployeeInput {
+  return {
+    employeeNumber: a.employeeNumber,
+    firstNameAr: a.firstNameAr ?? "", lastNameAr: a.lastNameAr ?? "",
+    firstName: a.firstName ?? "", lastName: a.lastName ?? "",
+    nationalId: a.nationalId ?? "", phone: a.phone ?? "", email: a.email,
+    dateOfBirth: a.dateOfBirth ? a.dateOfBirth.slice(0, 10) : "",
+    gender: a.genderAr || "ذكر",
+    nationalityId: a.nationalityId ?? "", jobTitleId: a.jobTitleId ?? "",
+    contractTypeId: a.contractTypeId ?? "", employmentTypeId: a.employmentTypeId ?? "",
+    departmentId: a.departmentId ?? "", branchId: a.branchId ?? "", managerId: a.managerId ?? "",
+    joinDate: a.hireDate ? a.hireDate.slice(0, 10) : "", status: a.statusAr || "نشط",
+    address: a.address ?? "", city: a.city ?? "",
+    emergencyContactName: a.emergencyContactName ?? "", emergencyContactPhone: a.emergencyContactPhone ?? "",
+    salary: a.basicSalary, currency: a.currency ?? "SAR",
+    paymentMethodId: a.paymentMethodId ?? "", bankId: a.bankId ?? "",
+    bankAccountNumber: a.bankAccountNumber ?? "", iban: a.iban ?? "",
+    salaryCardNumber: a.salaryCardNumber ?? "", cardProvider: a.cardProvider ?? "",
+    workLocationId: a.workLocationId ?? "", leavePolicyId: a.leavePolicyId ?? "",
+    payrollGroupId: a.payrollGroupId ?? "", photoUrl: a.photoUrl ?? "", notes: a.notes ?? "",
+    allowances: (a.allowances ?? []).map((al) => ({ allowanceTypeId: al.allowanceTypeId, amount: al.amount })),
+  };
+}
+
+export function EmployeeForm({ mode = "create", employeeId, initial }: Props) {
   const router = useRouter();
-  const isEdit = mode === "edit";
+  const [form, setForm] = useState<EmployeeInput>(() => (initial ? fromApi(initial) : emptyInput()));
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   const [jobTitles, setJobTitles] = useState<LookupItem[]>([]);
   const [nationalities, setNationalities] = useState<LookupItem[]>([]);
   const [contractTypes, setContractTypes] = useState<LookupItem[]>([]);
+  const [employmentTypes, setEmploymentTypes] = useState<LookupItem[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<LookupItem[]>([]);
+  const [banks, setBanks] = useState<LookupItem[]>([]);
+  const [workLocations, setWorkLocations] = useState<LookupItem[]>([]);
+  const [leavePolicies, setLeavePolicies] = useState<LookupItem[]>([]);
+  const [payrollGroups, setPayrollGroups] = useState<LookupItem[]>([]);
+  const [allowanceTypes, setAllowanceTypes] = useState<LookupItem[]>([]);
   const [departments, setDepartments] = useState<OrgOption[]>([]);
   const [branches, setBranches] = useState<OrgOption[]>([]);
-  const [optionsLoading, setOptionsLoading] = useState(true);
+  const [managers, setManagers] = useState<Employee[]>([]);
 
   useEffect(() => {
-    let active = true;
     (async () => {
       try {
-        const [jt, nat, ct, deps, brs] = await Promise.all([
-          getLookup("job-titles"),
-          getLookup("nationalities"),
-          getLookup("contract-types"),
-          getDepartments(),
-          getBranches(),
+        const [jt, nat, ct, et, pm, bk, wl, lp, pg, at, deps, brs, emps] = await Promise.all([
+          getLookup("job-titles"), getLookup("nationalities"), getLookup("contract-types"),
+          getLookup("employment-types"), getLookup("payment-methods"), getLookup("banks"),
+          getLookup("work-locations"), getLookup("leave-policies"), getLookup("payroll-groups"),
+          getLookup("allowance-types"), getDepartments(), getBranches(), getEmployees({ pageSize: 200 }),
         ]);
-        if (!active) return;
-        setJobTitles(jt);
-        setNationalities(nat);
-        setContractTypes(ct);
-        setDepartments(deps);
-        setBranches(brs);
-      } catch (err) {
-        if (!(err instanceof ApiError) || ![401, 403, 500].includes(err.status)) {
-          toast.error("تعذر تحميل قوائم الاختيار");
-        }
-      } finally {
-        if (active) setOptionsLoading(false);
-      }
+        setJobTitles(jt); setNationalities(nat); setContractTypes(ct); setEmploymentTypes(et);
+        setPaymentMethods(pm); setBanks(bk); setWorkLocations(wl); setLeavePolicies(lp);
+        setPayrollGroups(pg); setAllowanceTypes(at); setDepartments(deps); setBranches(brs);
+        setManagers(emps.filter((e) => e.id !== employeeId));
+      } catch (err) { notifyError(err, "تعذر تحميل القوائم"); }
     })();
-    return () => {
-      active = false;
-    };
-  }, []);
+  }, [employeeId]);
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-  } = useForm<EmployeeFormData>({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    resolver: zodResolver(employeeSchema) as any,
-    defaultValues: initial
-      ? {
-          employeeNumber: initial.employeeId,
-          name: initial.name,
-          nationalId: initial.nationalId,
-          phone: initial.phone,
-          email: initial.email,
-          dateOfBirth: initial.dateOfBirth,
-          gender: initial.gender,
-          nationalityId: initial.nationalityId ?? "",
-          jobTitleId: initial.jobTitleId ?? "",
-          contractTypeId: initial.contractTypeId ?? "",
-          departmentId: initial.departmentId ?? "",
-          branchId: initial.branchId ?? "",
-          joinDate: initial.joinDate,
-          salary: String(initial.salary),
-          status: initial.status || "نشط",
-        }
-      : { status: "نشط" },
-  });
+  const set = <K extends keyof EmployeeInput>(k: K, v: EmployeeInput[K]) => setForm((f) => ({ ...f, [k]: v }));
 
-  const onSubmit = async (data: EmployeeFormData) => {
-    const input: EmployeeInput = {
-      employeeNumber: data.employeeNumber,
-      name: data.name,
-      nationalId: data.nationalId,
-      phone: data.phone,
-      email: data.email,
-      dateOfBirth: data.dateOfBirth,
-      gender: data.gender,
-      nationalityId: data.nationalityId,
-      jobTitleId: data.jobTitleId,
-      contractTypeId: data.contractTypeId,
-      departmentId: data.departmentId,
-      branchId: data.branchId,
-      joinDate: data.joinDate,
-      salary: Number(data.salary),
-      status: data.status,
-    };
+  const paymentCode = useMemo(
+    () => paymentMethods.find((p) => p.id === form.paymentMethodId)?.code,
+    [paymentMethods, form.paymentMethodId]
+  );
+
+  const allowanceMap = useMemo(() => {
+    const m = new Map<string, number>();
+    form.allowances.forEach((a) => m.set(a.allowanceTypeId, a.amount));
+    return m;
+  }, [form.allowances]);
+
+  function toggleAllowance(typeId: string, on: boolean) {
+    setForm((f) => {
+      const others = f.allowances.filter((a) => a.allowanceTypeId !== typeId);
+      if (!on) return { ...f, allowances: others };
+      const def = allowanceTypes.find((t) => t.id === typeId);
+      const defaultVal = Number((def?.metadata as Record<string, unknown> | undefined)?.defaultValue ?? 0) || 0;
+      return { ...f, allowances: [...others, { allowanceTypeId: typeId, amount: defaultVal }] };
+    });
+  }
+  function setAllowanceAmount(typeId: string, amount: number) {
+    setForm((f) => ({ ...f, allowances: f.allowances.map((a) => a.allowanceTypeId === typeId ? { ...a, amount } : a) }));
+  }
+
+  async function onPhoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
     try {
-      if (isEdit && employeeId) {
-        await updateEmployee(employeeId, input);
-        toast.success("تم تحديث بيانات الموظف");
-      } else {
-        await createEmployee(input);
-        toast.success("تمت إضافة الموظف بنجاح");
-      }
-      router.push("/employees");
-      router.refresh();
-    } catch (err) {
-      if (!(err instanceof ApiError) || ![401, 403, 500].includes(err.status)) {
-        toast.error(err instanceof ApiError ? err.message : "تعذر حفظ بيانات الموظف");
-      }
-    }
-  };
+      const res = await uploadFile(file, "photo");
+      set("photoUrl", res.url);
+      toast.success("تم رفع الصورة");
+    } catch (err) { notifyError(err, "تعذر رفع الصورة"); }
+    finally { setUploading(false); e.target.value = ""; }
+  }
 
-  const selectClass = "w-full h-9 bg-secondary border border-border px-3 text-sm text-foreground disabled:opacity-60";
+  async function submit() {
+    if (!form.firstNameAr.trim() || !form.lastNameAr.trim()) { toast.error("الاسم الأول واسم العائلة (عربي) مطلوبان"); return; }
+    if (!form.email.trim()) { toast.error("البريد الإلكتروني مطلوب"); return; }
+    if (!form.dateOfBirth) { toast.error("تاريخ الميلاد مطلوب"); return; }
+    if (!form.joinDate) { toast.error("تاريخ الالتحاق مطلوب"); return; }
+    if (paymentCode === "BANK_TRANSFER" && (!form.iban?.trim() || !form.bankId)) { toast.error("عند التحويل البنكي: البنك ورقم الآيبان مطلوبان"); return; }
+    if (paymentCode === "SALARY_CARD" && !form.salaryCardNumber?.trim()) { toast.error("رقم بطاقة الراتب مطلوب"); return; }
+    setSaving(true);
+    try {
+      if (mode === "edit" && employeeId) { await updateEmployee(employeeId, form); toast.success("تم تحديث بيانات الموظف"); }
+      else { await createEmployee(form); toast.success("تمت إضافة الموظف"); }
+      router.push(employeeId && mode === "edit" ? `/employees/${employeeId}` : "/employees");
+    } catch (err) { notifyError(err, "تعذر حفظ الموظف"); }
+    finally { setSaving(false); }
+  }
+
+  const photoSrc = fileUrl(form.photoUrl);
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
-      {/* Personal Info */}
-      <div className="border border-border bg-card p-6">
-        <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-5">البيانات الشخصية</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          <div className="space-y-2">
-            <Label className="text-xs font-bold uppercase tracking-wider">الاسم الكامل</Label>
-            <Input {...register("name")} className="bg-secondary border-border" />
-            {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
+    <div className="space-y-5">
+      <Section title="المعلومات الشخصية">
+        <div className="sm:col-span-2 lg:col-span-3 flex items-center gap-4">
+          <div className="h-20 w-20 border border-border bg-secondary overflow-hidden flex items-center justify-center shrink-0">
+            {photoSrc ? <img src={photoSrc} alt="" className="h-full w-full object-cover" /> : <User className="h-8 w-8 text-muted-foreground" />}
           </div>
-          <div className="space-y-2">
-            <Label className="text-xs font-bold uppercase tracking-wider">رقم الهوية</Label>
-            <Input {...register("nationalId")} className="bg-secondary border-border" />
-            {errors.nationalId && <p className="text-xs text-destructive">{errors.nationalId.message}</p>}
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs font-bold uppercase tracking-wider">رقم الجوال</Label>
-            <Input {...register("phone")} className="bg-secondary border-border" />
-            {errors.phone && <p className="text-xs text-destructive">{errors.phone.message}</p>}
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs font-bold uppercase tracking-wider">البريد الإلكتروني</Label>
-            <Input type="email" {...register("email")} className="bg-secondary border-border" />
-            {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs font-bold uppercase tracking-wider">تاريخ الميلاد</Label>
-            <Input type="date" {...register("dateOfBirth")} className="bg-secondary border-border" />
-            {errors.dateOfBirth && <p className="text-xs text-destructive">{errors.dateOfBirth.message}</p>}
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs font-bold uppercase tracking-wider">الجنس</Label>
-            <select {...register("gender")} className={selectClass}>
-              <option value="">اختر</option>
-              <option value="ذكر">ذكر</option>
-              <option value="أنثى">أنثى</option>
+          <label className="inline-flex items-center gap-2 h-9 px-4 border border-border bg-secondary text-sm cursor-pointer hover:bg-card transition-colors">
+            {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            {uploading ? "جاري الرفع..." : "صورة الموظف"}
+            <input type="file" accept="image/*" className="hidden" onChange={onPhoto} disabled={uploading} />
+          </label>
+          {photoSrc && <button type="button" onClick={() => set("photoUrl", "")} className="text-xs text-destructive hover:underline">إزالة</button>}
+        </div>
+        <Field label="الاسم الأول (عربي) *"><Input value={form.firstNameAr} onChange={(e) => set("firstNameAr", e.target.value)} className="bg-secondary border-border" /></Field>
+        <Field label="اسم العائلة (عربي) *"><Input value={form.lastNameAr} onChange={(e) => set("lastNameAr", e.target.value)} className="bg-secondary border-border" /></Field>
+        <Field label="الجنس">
+          <select value={form.gender} onChange={(e) => set("gender", e.target.value)} className={selectClass}>
+            <option value="ذكر">ذكر</option><option value="أنثى">أنثى</option>
+          </select>
+        </Field>
+        <Field label="الاسم الأول (إنجليزي)"><Input value={form.firstName} onChange={(e) => set("firstName", e.target.value)} className="bg-secondary border-border" /></Field>
+        <Field label="اسم العائلة (إنجليزي)"><Input value={form.lastName} onChange={(e) => set("lastName", e.target.value)} className="bg-secondary border-border" /></Field>
+        <Field label="تاريخ الميلاد *"><Input type="date" value={form.dateOfBirth} onChange={(e) => set("dateOfBirth", e.target.value)} className="bg-secondary border-border" /></Field>
+      </Section>
+
+      <Section title="معلومات الهوية">
+        <Field label="رقم الهوية / الإقامة"><Input value={form.nationalId} onChange={(e) => set("nationalId", e.target.value)} className="bg-secondary border-border font-mono" /></Field>
+        <Field label="الجنسية"><LookupSelect value={form.nationalityId ?? ""} onChange={(v) => set("nationalityId", v)} items={nationalities} placeholder="— اختر —" /></Field>
+      </Section>
+
+      <Section title="معلومات التواصل">
+        <Field label="الجوال"><Input value={form.phone} onChange={(e) => set("phone", e.target.value)} className="bg-secondary border-border font-mono" /></Field>
+        <Field label="البريد الإلكتروني *"><Input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} className="bg-secondary border-border" /></Field>
+        <Field label="المدينة"><Input value={form.city} onChange={(e) => set("city", e.target.value)} className="bg-secondary border-border" /></Field>
+        <Field label="العنوان" full><Input value={form.address} onChange={(e) => set("address", e.target.value)} className="bg-secondary border-border" /></Field>
+        <Field label="اسم جهة اتصال الطوارئ"><Input value={form.emergencyContactName} onChange={(e) => set("emergencyContactName", e.target.value)} className="bg-secondary border-border" /></Field>
+        <Field label="هاتف جهة اتصال الطوارئ"><Input value={form.emergencyContactPhone} onChange={(e) => set("emergencyContactPhone", e.target.value)} className="bg-secondary border-border font-mono" /></Field>
+      </Section>
+
+      <Section title="معلومات التوظيف">
+        <Field label="الرقم الوظيفي"><Input value={form.employeeNumber} onChange={(e) => set("employeeNumber", e.target.value)} disabled={mode === "edit"} className="bg-secondary border-border font-mono disabled:opacity-60" placeholder="يُولّد تلقائياً" /></Field>
+        <Field label="المسمى الوظيفي"><LookupSelect value={form.jobTitleId ?? ""} onChange={(v) => set("jobTitleId", v)} items={jobTitles} placeholder="— اختر —" /></Field>
+        <Field label="تاريخ الالتحاق *"><Input type="date" value={form.joinDate} onChange={(e) => set("joinDate", e.target.value)} className="bg-secondary border-border" /></Field>
+        <Field label="نوع العقد"><LookupSelect value={form.contractTypeId ?? ""} onChange={(v) => set("contractTypeId", v)} items={contractTypes} placeholder="— اختر —" /></Field>
+        <Field label="نوع التوظيف"><LookupSelect value={form.employmentTypeId ?? ""} onChange={(v) => set("employmentTypeId", v)} items={employmentTypes} placeholder="— اختر —" /></Field>
+        {mode === "edit" && (
+          <Field label="الحالة">
+            <select value={form.status} onChange={(e) => set("status", e.target.value)} className={selectClass}>
+              {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
-            {errors.gender && <p className="text-xs text-destructive">{errors.gender.message}</p>}
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs font-bold uppercase tracking-wider">الجنسية</Label>
-            <select {...register("nationalityId")} disabled={optionsLoading} className={selectClass}>
-              <option value="">{optionsLoading ? "جاري التحميل..." : "اختر الجنسية"}</option>
-              {nationalities.map((o) => (
-                <option key={o.id} value={o.id}>{lookupLabel(o)}</option>
-              ))}
-            </select>
-            {errors.nationalityId && <p className="text-xs text-destructive">{errors.nationalityId.message}</p>}
+          </Field>
+        )}
+      </Section>
+
+      <Section title="الإسناد التنظيمي">
+        <Field label="القسم">
+          <select value={form.departmentId ?? ""} onChange={(e) => set("departmentId", e.target.value)} className={selectClass}>
+            <option value="">— اختر —</option>
+            {departments.map((d) => <option key={d.id} value={d.id}>{orgLabel(d)}</option>)}
+          </select>
+        </Field>
+        <Field label="الفرع">
+          <select value={form.branchId ?? ""} onChange={(e) => set("branchId", e.target.value)} className={selectClass}>
+            <option value="">— اختر —</option>
+            {branches.map((b) => <option key={b.id} value={b.id}>{orgLabel(b)}</option>)}
+          </select>
+        </Field>
+        <Field label="المدير المباشر">
+          <select value={form.managerId ?? ""} onChange={(e) => set("managerId", e.target.value)} className={selectClass}>
+            <option value="">— لا يوجد —</option>
+            {managers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
+        </Field>
+      </Section>
+
+      <Section title="التعويضات والدفع">
+        <Field label="الراتب الأساسي"><Input type="number" min={0} value={form.salary || ""} onChange={(e) => set("salary", Number(e.target.value))} className="bg-secondary border-border" /></Field>
+        <Field label="العملة"><Input value={form.currency} onChange={(e) => set("currency", e.target.value)} className="bg-secondary border-border" placeholder="SAR" /></Field>
+        <Field label="طريقة الدفع"><LookupSelect value={form.paymentMethodId ?? ""} onChange={(v) => set("paymentMethodId", v)} items={paymentMethods} placeholder="— اختر —" /></Field>
+        {paymentCode === "BANK_TRANSFER" && (<>
+          <Field label="البنك *"><LookupSelect value={form.bankId ?? ""} onChange={(v) => set("bankId", v)} items={banks} placeholder="— اختر —" /></Field>
+          <Field label="رقم الآيبان (IBAN) *"><Input value={form.iban} onChange={(e) => set("iban", e.target.value)} className="bg-secondary border-border font-mono" placeholder="SA.." /></Field>
+          <Field label="رقم الحساب البنكي"><Input value={form.bankAccountNumber} onChange={(e) => set("bankAccountNumber", e.target.value)} className="bg-secondary border-border font-mono" /></Field>
+        </>)}
+        {paymentCode === "SALARY_CARD" && (<>
+          <Field label="رقم بطاقة الراتب *"><Input value={form.salaryCardNumber} onChange={(e) => set("salaryCardNumber", e.target.value)} className="bg-secondary border-border font-mono" /></Field>
+          <Field label="مزود البطاقة"><Input value={form.cardProvider} onChange={(e) => set("cardProvider", e.target.value)} className="bg-secondary border-border" /></Field>
+        </>)}
+
+        <div className="sm:col-span-2 lg:col-span-3 space-y-2">
+          <Label className="text-xs font-bold uppercase tracking-wider">البدلات</Label>
+          <div className="border border-border divide-y divide-border">
+            {allowanceTypes.length === 0 && <div className="px-3 py-3 text-xs text-muted-foreground">لا توجد بدلات معرّفة — أضفها من إعدادات الرواتب.</div>}
+            {allowanceTypes.map((t) => {
+              const on = allowanceMap.has(t.id);
+              const meta = (t.metadata as Record<string, unknown> | undefined) ?? {};
+              const pct = meta.calculationType === "Percentage";
+              return (
+                <div key={t.id} className="flex items-center gap-3 px-3 py-2">
+                  <input type="checkbox" checked={on} onChange={(e) => toggleAllowance(t.id, e.target.checked)} />
+                  <span className="text-sm flex-1">{lookupLabel(t)} {pct && <span className="text-[10px] text-muted-foreground">(نسبة)</span>}</span>
+                  {on && (
+                    <div className="flex items-center gap-1">
+                      <Input type="number" min={0} value={allowanceMap.get(t.id) ?? 0} onChange={(e) => setAllowanceAmount(t.id, Number(e.target.value))} className="bg-secondary border-border h-8 w-32 text-sm" />
+                      <span className="text-xs text-muted-foreground">{pct ? "%" : "ريال"}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
-      </div>
+      </Section>
 
-      {/* Employment Info */}
-      <div className="border border-border bg-card p-6">
-        <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-5">بيانات التوظيف</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          <div className="space-y-2">
-            <Label className="text-xs font-bold uppercase tracking-wider">الرقم الوظيفي</Label>
-            <Input
-              {...register("employeeNumber")}
-              disabled={isEdit}
-              placeholder={isEdit ? undefined : "تلقائي إن تُرك فارغاً"}
-              className="bg-secondary border-border disabled:opacity-60"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs font-bold uppercase tracking-wider">المسمى الوظيفي</Label>
-            <select {...register("jobTitleId")} disabled={optionsLoading} className={selectClass}>
-              <option value="">{optionsLoading ? "جاري التحميل..." : "اختر المسمى"}</option>
-              {jobTitles.map((o) => (
-                <option key={o.id} value={o.id}>{lookupLabel(o)}</option>
-              ))}
-            </select>
-            {errors.jobTitleId && <p className="text-xs text-destructive">{errors.jobTitleId.message}</p>}
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs font-bold uppercase tracking-wider">القسم</Label>
-            <select {...register("departmentId")} disabled={optionsLoading} className={selectClass}>
-              <option value="">{optionsLoading ? "جاري التحميل..." : "اختر القسم"}</option>
-              {departments.map((o) => (
-                <option key={o.id} value={o.id}>{orgLabel(o)}</option>
-              ))}
-            </select>
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs font-bold uppercase tracking-wider">الفرع</Label>
-            <select {...register("branchId")} disabled={optionsLoading} className={selectClass}>
-              <option value="">{optionsLoading ? "جاري التحميل..." : "اختر الفرع"}</option>
-              {branches.map((o) => (
-                <option key={o.id} value={o.id}>{orgLabel(o)}</option>
-              ))}
-            </select>
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs font-bold uppercase tracking-wider">تاريخ الانضمام</Label>
-            <Input type="date" {...register("joinDate")} className="bg-secondary border-border" />
-            {errors.joinDate && <p className="text-xs text-destructive">{errors.joinDate.message}</p>}
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs font-bold uppercase tracking-wider">نوع العقد</Label>
-            <select {...register("contractTypeId")} disabled={optionsLoading} className={selectClass}>
-              <option value="">{optionsLoading ? "جاري التحميل..." : "اختر نوع العقد"}</option>
-              {contractTypes.map((o) => (
-                <option key={o.id} value={o.id}>{lookupLabel(o)}</option>
-              ))}
-            </select>
-            {errors.contractTypeId && <p className="text-xs text-destructive">{errors.contractTypeId.message}</p>}
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs font-bold uppercase tracking-wider">الراتب الشهري (ر.س)</Label>
-            <Input type="number" {...register("salary")} className="bg-secondary border-border" />
-            {errors.salary && <p className="text-xs text-destructive">{errors.salary.message}</p>}
-          </div>
-          {isEdit && (
-            <div className="space-y-2">
-              <Label className="text-xs font-bold uppercase tracking-wider">الحالة</Label>
-              <select {...register("status")} className={selectClass}>
-                {STATUS_OPTIONS.map((s) => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
-            </div>
-          )}
+      <Section title="الحضور والموقع">
+        <Field label="موقع الحضور"><LookupSelect value={form.workLocationId ?? ""} onChange={(v) => set("workLocationId", v)} items={workLocations} placeholder="— اختر —" /></Field>
+        <Field label="سياسة الإجازات"><LookupSelect value={form.leavePolicyId ?? ""} onChange={(v) => set("leavePolicyId", v)} items={leavePolicies} placeholder="— اختر —" /></Field>
+        <Field label="مجموعة الرواتب"><LookupSelect value={form.payrollGroupId ?? ""} onChange={(v) => set("payrollGroupId", v)} items={payrollGroups} placeholder="— اختر —" /></Field>
+      </Section>
+
+      <Section title="ملاحظات">
+        <div className="sm:col-span-2 lg:col-span-3 space-y-2">
+          <Label className="text-xs font-bold uppercase tracking-wider">ملاحظات</Label>
+          <textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} className="w-full bg-secondary border border-border px-3 py-2 text-sm text-foreground min-h-[80px]" />
         </div>
-      </div>
+      </Section>
 
-      {/* Actions */}
-      <div className="flex items-center gap-3">
-        <Button type="submit" disabled={isSubmitting} className="h-10 px-8 font-bold uppercase tracking-wider">
-          {isSubmitting ? "جاري الحفظ..." : isEdit ? "حفظ التعديلات" : "حفظ الموظف"}
-        </Button>
-        <Button type="button" variant="outline" onClick={() => router.back()} className="h-10 px-8">
-          إلغاء
+      <div className="flex items-center justify-end gap-2">
+        <Button variant="outline" onClick={() => router.back()} disabled={saving}>إلغاء</Button>
+        <Button onClick={submit} disabled={saving} className="font-bold gap-2 min-w-32">
+          {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+          {saving ? "جاري الحفظ..." : (mode === "edit" ? "حفظ التعديلات" : "إضافة الموظف")}
         </Button>
       </div>
-    </form>
+    </div>
   );
 }

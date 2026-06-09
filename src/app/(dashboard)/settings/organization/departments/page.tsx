@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Plus, Pencil, Trash2, Loader2, CornerDownLeft } from "lucide-react";
+import { ArrowRight, Plus, Pencil, Trash2, Loader2, CornerDownLeft, Network } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -155,7 +155,12 @@ export default function DepartmentsPage() {
           <h1 className="text-2xl font-bold">الأقسام</h1>
           <p className="text-sm text-muted-foreground mt-1">الهيكل التنظيمي والتسلسل الإداري</p>
         </div>
-        <Button onClick={openCreate} className="h-10 gap-2 font-bold uppercase tracking-wider text-sm"><Plus className="h-4 w-4" /> إضافة قسم</Button>
+        <div className="flex items-center gap-2">
+          <Link href="/settings/organization/departments/chart" className="inline-flex items-center gap-2 h-10 px-4 border border-border bg-background text-sm font-bold hover:bg-muted transition-colors">
+            <Network className="h-4 w-4" /> المخطط التنظيمي
+          </Link>
+          <Button onClick={openCreate} className="h-10 gap-2 font-bold uppercase tracking-wider text-sm"><Plus className="h-4 w-4" /> إضافة قسم</Button>
+        </div>
       </div>
 
       <div className="border border-border">

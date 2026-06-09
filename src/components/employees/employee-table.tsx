@@ -185,9 +185,11 @@ export function EmployeeTable({
                   <TableCell>
                     <Link href={`/employees/${employee.id}`} className="flex items-center gap-3 hover:text-primary transition-colors">
                       <Avatar className="h-8 w-8">
-                        <AvatarFallback className="bg-card text-xs font-bold border border-border">
-                          {employee.name.charAt(0)}
-                        </AvatarFallback>
+                        {employee.avatar
+                          ? <img src={employee.avatar} alt="" className="h-8 w-8 object-cover" />
+                          : <AvatarFallback className="bg-card text-xs font-bold border border-border">
+                              {employee.name.charAt(0)}
+                            </AvatarFallback>}
                       </Avatar>
                       <span className="font-medium">{employee.name}</span>
                     </Link>

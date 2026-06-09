@@ -8,8 +8,10 @@ import { EmployeeTable } from "@/components/employees/employee-table";
 import { getEmployees } from "@/lib/api/employees";
 import { ApiError } from "@/lib/api-client";
 import { Employee } from "@/types";
+import { usePermissions } from "@/lib/permissions";
 
 export default function EmployeesPage() {
+  const { has } = usePermissions();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -53,13 +55,15 @@ export default function EmployeesPage() {
           >
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           </button>
-          <Link
-            href="/employees/new"
-            className="inline-flex items-center gap-2 h-10 px-4 bg-primary text-primary-foreground font-bold uppercase tracking-wider text-sm hover:bg-primary/80 transition-colors"
-          >
-            <Plus className="h-4 w-4" />
-            إضافة موظف
-          </Link>
+          {has("Employees.Create") && (
+            <Link
+              href="/employees/new"
+              className="inline-flex items-center gap-2 h-10 px-4 bg-primary text-primary-foreground font-bold uppercase tracking-wider text-sm hover:bg-primary/80 transition-colors"
+            >
+              <Plus className="h-4 w-4" />
+              إضافة موظف
+            </Link>
+          )}
         </div>
       </div>
 

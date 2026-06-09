@@ -1,12 +1,18 @@
 import Link from "next/link";
-import { Building2, Database, ChevronLeft, Inbox } from "lucide-react";
+import { Building2, Database, ChevronLeft, Inbox, Wallet } from "lucide-react";
 
 const categories = [
   {
     href: "/settings/organization",
     title: "إعدادات المؤسسة",
-    description: "الأقسام، الفروع، المسميات الوظيفية، المناصب، الدرجات، مراكز التكلفة",
+    description: "الأقسام، الفروع، المسميات الوظيفية، الجنسيات، الدرجات، مراكز التكلفة",
     icon: Building2,
+  },
+  {
+    href: "/settings/payroll",
+    title: "إعدادات الرواتب",
+    description: "أنواع البدلات وقواعد احتسابها، مجموعات الرواتب، طرق الدفع",
+    icon: Wallet,
   },
   {
     href: "/settings/requests",

@@ -70,24 +70,42 @@ export async function deleteDepartment(id: string): Promise<void> {
   await apiFetch<unknown>(`/api/departments/${id}`, { method: "DELETE" });
 }
 
+// Move a department under a new parent (org-chart drag). Backend guards against cycles.
+export async function reparentDepartment(id: string, parentDepartmentId: string | null): Promise<Department> {
+  return apiFetch<Department>(`/api/departments/${id}/parent`, {
+    method: "PUT",
+    body: { parentDepartmentId },
+  });
+}
+
 // ── Branches (full management) ──
 export interface Branch {
   id: string;
   name: string;
   nameAr?: string | null;
+  code?: string | null;
   city?: string | null;
   address?: string | null;
   phone?: string | null;
   isMainBranch: boolean;
+  latitude?: number | null;
+  longitude?: number | null;
+  geofenceRadiusMeters?: number | null;
+  isActive: boolean;
 }
 
 export interface BranchInput {
   name: string;
   nameAr?: string;
+  code?: string;
   city?: string;
   address?: string;
   phone?: string;
   isMainBranch: boolean;
+  latitude?: number | null;
+  longitude?: number | null;
+  geofenceRadiusMeters?: number | null;
+  isActive: boolean;
 }
 
 export async function listBranches(): Promise<Branch[]> {

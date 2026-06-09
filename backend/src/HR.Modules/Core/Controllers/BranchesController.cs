@@ -27,11 +27,7 @@ public class BranchesController : BaseApiController
     public async Task<ActionResult<ApiResponse<List<BranchDto>>>> GetAll(CancellationToken ct)
     {
         var branches = await _context.Branch
-            .Select(b => new BranchDto
-            {
-                Id = b.Id, Name = b.Name, NameAr = b.NameAr,
-                City = b.City, Address = b.Address, Phone = b.Phone, IsMainBranch = b.IsMainBranch
-            })
+            .Select(b => Project(b))
             .ToListAsync(ct);
 
         return OkResponse(branches);
@@ -43,11 +39,7 @@ public class BranchesController : BaseApiController
     {
         var branch = await _context.Branch
             .Where(b => b.Id == id)
-            .Select(b => new BranchDto
-            {
-                Id = b.Id, Name = b.Name, NameAr = b.NameAr,
-                City = b.City, Address = b.Address, Phone = b.Phone, IsMainBranch = b.IsMainBranch
-            })
+            .Select(b => Project(b))
             .FirstOrDefaultAsync(ct);
 
         if (branch == null) throw new NotFoundException("Branch", id);
@@ -60,19 +52,18 @@ public class BranchesController : BaseApiController
     {
         var branch = new Branch
         {
-            Name = request.Name, NameAr = request.NameAr,
-            City = request.City, Address = request.Address,
-            Phone = request.Phone, IsMainBranch = request.IsMainBranch
+            Name = request.Name, NameAr = request.NameAr, Code = request.Code,
+            City = request.City, Address = request.Address, Phone = request.Phone,
+            IsMainBranch = request.IsMainBranch,
+            Latitude = request.Latitude, Longitude = request.Longitude,
+            GeofenceRadiusMeters = request.GeofenceRadiusMeters,
+            IsActive = request.IsActive,
         };
 
         _context.Branch.Add(branch);
         await _context.SaveChangesAsync(ct);
 
-        return CreatedResponse(new BranchDto
-        {
-            Id = branch.Id, Name = branch.Name, NameAr = branch.NameAr,
-            City = branch.City, Address = branch.Address, Phone = branch.Phone, IsMainBranch = branch.IsMainBranch
-        });
+        return CreatedResponse(Map(branch));
     }
 
     [HttpPut("{id:guid}")]
@@ -84,19 +75,31 @@ public class BranchesController : BaseApiController
 
         branch.Name = request.Name;
         branch.NameAr = request.NameAr;
+        branch.Code = request.Code;
         branch.City = request.City;
         branch.Address = request.Address;
         branch.Phone = request.Phone;
         branch.IsMainBranch = request.IsMainBranch;
+        branch.Latitude = request.Latitude;
+        branch.Longitude = request.Longitude;
+        branch.GeofenceRadiusMeters = request.GeofenceRadiusMeters;
+        branch.IsActive = request.IsActive;
 
         await _context.SaveChangesAsync(ct);
 
-        return OkResponse(new BranchDto
-        {
-            Id = branch.Id, Name = branch.Name, NameAr = branch.NameAr,
-            City = branch.City, Address = branch.Address, Phone = branch.Phone, IsMainBranch = branch.IsMainBranch
-        });
+        return OkResponse(Map(branch));
     }
+
+    // EF-translatable projection (used inside IQueryable.Select).
+    private static BranchDto Project(Branch b) => new()
+    {
+        Id = b.Id, Name = b.Name, NameAr = b.NameAr, Code = b.Code,
+        City = b.City, Address = b.Address, Phone = b.Phone, IsMainBranch = b.IsMainBranch,
+        Latitude = b.Latitude, Longitude = b.Longitude, GeofenceRadiusMeters = b.GeofenceRadiusMeters,
+        IsActive = b.IsActive,
+    };
+
+    private static BranchDto Map(Branch b) => Project(b);
 
     [HttpDelete("{id:guid}")]
     [RequirePermission("Branches.Delete")]
@@ -118,18 +121,28 @@ public class BranchDto
     public Guid Id { get; set; }
     public string Name { get; set; } = null!;
     public string? NameAr { get; set; }
+    public string? Code { get; set; }
     public string? City { get; set; }
     public string? Address { get; set; }
     public string? Phone { get; set; }
     public bool IsMainBranch { get; set; }
+    public double? Latitude { get; set; }
+    public double? Longitude { get; set; }
+    public int? GeofenceRadiusMeters { get; set; }
+    public bool IsActive { get; set; }
 }
 
 public class CreateBranchRequest
 {
     public string Name { get; set; } = null!;
     public string? NameAr { get; set; }
+    public string? Code { get; set; }
     public string? City { get; set; }
     public string? Address { get; set; }
     public string? Phone { get; set; }
     public bool IsMainBranch { get; set; }
+    public double? Latitude { get; set; }
+    public double? Longitude { get; set; }
+    public int? GeofenceRadiusMeters { get; set; }
+    public bool IsActive { get; set; } = true;
 }

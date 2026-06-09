@@ -13,7 +13,7 @@ namespace HR.Modules.Platform.Controllers;
 public class AuditController : BaseApiController
 {
     [HttpGet]
-    [RequirePermission("Platform.View")]
+    [RequirePermission("Platform.Admin.View")]
     public async Task<ActionResult<ApiResponse<PaginatedList<AuditEntryDto>>>> GetAll(
         [FromQuery] GetAuditEntriesQuery query, CancellationToken ct)
     {

@@ -1,5 +1,16 @@
 import { apiFetch } from "../api-client";
+import { fileUrl } from "./files";
 import { Employee } from "@/types";
+
+// Per-employee allowance override.
+export interface ApiEmployeeAllowance {
+  id: string;
+  allowanceTypeId: string;
+  allowanceType?: string | null;
+  allowanceTypeAr?: string | null;
+  amount: number;
+  isActive: boolean;
+}
 
 // Raw backend DTO (camelCase JSON). Governed fields are master-data / Core references
 // (ids) resolved to Arabic/English labels by the API.
@@ -26,6 +37,9 @@ export interface ApiEmployee {
   contractTypeId?: string | null;
   contractType?: string | null;
   contractTypeAr?: string | null;
+  employmentTypeId?: string | null;
+  employmentType?: string | null;
+  employmentTypeAr?: string | null;
   hireDate: string;
   terminationDate?: string | null;
   jobTitleId?: string | null;
@@ -37,9 +51,35 @@ export interface ApiEmployee {
   branchName?: string | null;
   managerId?: string | null;
   managerName?: string | null;
+  address?: string | null;
+  city?: string | null;
+  emergencyContactName?: string | null;
+  emergencyContactPhone?: string | null;
   basicSalary: number;
   currency?: string | null;
+  paymentMethodId?: string | null;
+  paymentMethod?: string | null;
+  paymentMethodAr?: string | null;
+  paymentMethodCode?: string | null;
+  bankId?: string | null;
+  bank?: string | null;
+  bankAr?: string | null;
+  bankAccountNumber?: string | null;
+  iban?: string | null;
+  salaryCardNumber?: string | null;
+  cardProvider?: string | null;
+  workLocationId?: string | null;
+  workLocation?: string | null;
+  workLocationAr?: string | null;
+  leavePolicyId?: string | null;
+  leavePolicy?: string | null;
+  leavePolicyAr?: string | null;
+  payrollGroupId?: string | null;
+  payrollGroup?: string | null;
+  payrollGroupAr?: string | null;
   photoUrl?: string | null;
+  notes?: string | null;
+  allowances: ApiEmployeeAllowance[];
   createdAt: string;
 }
 
@@ -53,32 +93,55 @@ interface PaginatedResult<T> {
   hasNextPage: boolean;
 }
 
-// Form input — governed selects carry ids, not free text.
+export interface EmployeeAllowanceInput {
+  allowanceTypeId: string;
+  amount: number;
+}
+
+// Full form input — governed selects carry ids, not free text.
 export interface EmployeeInput {
   employeeNumber?: string;
-  name: string;
-  nationalId: string;
-  phone: string;
+  firstNameAr: string;
+  lastNameAr: string;
+  firstName: string;   // English
+  lastName: string;    // English
+  nationalId?: string;
+  phone?: string;
   email: string;
   dateOfBirth: string;
-  gender: string; // "ذكر" | "أنثى"
+  gender: string;      // "ذكر" | "أنثى"
   nationalityId?: string;
   jobTitleId?: string;
   contractTypeId?: string;
+  employmentTypeId?: string;
   departmentId?: string;
   branchId?: string;
+  managerId?: string;
   joinDate: string;
+  status?: string;     // edit only — backend statusAr string
+  address?: string;
+  city?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
   salary: number;
-  status?: string; // edit only — backend statusAr string
+  currency?: string;
+  paymentMethodId?: string;
+  bankId?: string;
+  bankAccountNumber?: string;
+  iban?: string;
+  salaryCardNumber?: string;
+  cardProvider?: string;
+  workLocationId?: string;
+  leavePolicyId?: string;
+  payrollGroupId?: string;
+  photoUrl?: string;
+  notes?: string;
+  allowances: EmployeeAllowanceInput[];
 }
 
 const GENDER_TO_INT: Record<string, number> = { "ذكر": 1, "أنثى": 2 };
 const STATUS_TO_INT: Record<string, number> = {
-  "نشط": 1,
-  "في إجازة": 2,
-  "موقوف": 3,
-  "منتهي": 4,
-  "مستقيل": 5,
+  "نشط": 1, "في إجازة": 2, "موقوف": 3, "منتهي": 4, "مستقيل": 5,
 };
 
 // Postgres timestamptz columns require UTC — send full ISO with Z.
@@ -87,20 +150,12 @@ function toIsoUtc(dateStr: string): string {
   return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
 }
 
-function splitName(name: string): { first: string; last: string } {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  const first = parts[0] || name.trim();
-  const last = parts.slice(1).join(" ") || parts[0] || name.trim();
-  return { first, last };
-}
-
 // Empty string → null so the backend (Guid?) doesn't choke on "".
 function idOrNull(v?: string): string | null {
   return v && v.trim() ? v : null;
 }
 
-// Map backend DTO -> existing Arabic display Employee (keeps table/profile UI intact),
-// carrying the reference ids so the edit form can prefill its dropdowns.
+// Map backend DTO -> Arabic display Employee (keeps table/list UI intact).
 export function toDisplayEmployee(a: ApiEmployee): Employee {
   return {
     id: a.id,
@@ -120,6 +175,7 @@ export function toDisplayEmployee(a: ApiEmployee): Employee {
     status: (a.statusAr as Employee["status"]) || "نشط",
     leaveBalance: 0,
     attendanceRate: 0,
+    avatar: fileUrl(a.photoUrl),
     jobTitleId: a.jobTitleId ?? null,
     nationalityId: a.nationalityId ?? null,
     contractTypeId: a.contractTypeId ?? null,
@@ -129,10 +185,54 @@ export function toDisplayEmployee(a: ApiEmployee): Employee {
   };
 }
 
+function toPayload(input: EmployeeInput) {
+  const firstAr = input.firstNameAr.trim();
+  const lastAr = input.lastNameAr.trim();
+  const firstEn = input.firstName.trim() || firstAr;
+  const lastEn = input.lastName.trim() || lastAr;
+  return {
+    firstName: firstEn,
+    firstNameAr: firstAr || firstEn,
+    lastName: lastEn,
+    lastNameAr: lastAr || lastEn,
+    email: input.email,
+    phone: input.phone || null,
+    gender: GENDER_TO_INT[input.gender] ?? 1,
+    dateOfBirth: toIsoUtc(input.dateOfBirth),
+    nationalId: input.nationalId || null,
+    nationalityId: idOrNull(input.nationalityId),
+    contractTypeId: idOrNull(input.contractTypeId),
+    employmentTypeId: idOrNull(input.employmentTypeId),
+    jobTitleId: idOrNull(input.jobTitleId),
+    departmentId: idOrNull(input.departmentId),
+    branchId: idOrNull(input.branchId),
+    managerId: idOrNull(input.managerId),
+    address: input.address || null,
+    city: input.city || null,
+    emergencyContactName: input.emergencyContactName || null,
+    emergencyContactPhone: input.emergencyContactPhone || null,
+    basicSalary: input.salary,
+    currency: input.currency || "SAR",
+    paymentMethodId: idOrNull(input.paymentMethodId),
+    bankId: idOrNull(input.bankId),
+    bankAccountNumber: input.bankAccountNumber || null,
+    iban: input.iban || null,
+    salaryCardNumber: input.salaryCardNumber || null,
+    cardProvider: input.cardProvider || null,
+    workLocationId: idOrNull(input.workLocationId),
+    leavePolicyId: idOrNull(input.leavePolicyId),
+    payrollGroupId: idOrNull(input.payrollGroupId),
+    photoUrl: input.photoUrl || null,
+    notes: input.notes || null,
+    allowances: (input.allowances || []).filter((a) => a.allowanceTypeId).map((a) => ({
+      allowanceTypeId: a.allowanceTypeId,
+      amount: Number(a.amount) || 0,
+    })),
+  };
+}
+
 export async function getEmployees(params?: {
-  search?: string;
-  pageNumber?: number;
-  pageSize?: number;
+  search?: string; pageNumber?: number; pageSize?: number;
 }): Promise<Employee[]> {
   const q = new URLSearchParams();
   q.set("pageNumber", String(params?.pageNumber ?? 1));
@@ -147,51 +247,24 @@ export async function getEmployee(id: string): Promise<Employee> {
   return toDisplayEmployee(a);
 }
 
+// Full raw record — used by the profile + edit form which need every field.
+export async function getEmployeeRaw(id: string): Promise<ApiEmployee> {
+  return apiFetch<ApiEmployee>(`/api/employees/${id}`);
+}
+
 export async function createEmployee(input: EmployeeInput): Promise<ApiEmployee> {
-  const { first, last } = splitName(input.name);
   const payload = {
     employeeNumber: input.employeeNumber?.trim() || `EMP-${Date.now().toString().slice(-6)}`,
-    firstName: first,
-    firstNameAr: first,
-    lastName: last,
-    lastNameAr: last,
-    email: input.email,
-    phone: input.phone,
-    gender: GENDER_TO_INT[input.gender] ?? 1,
-    dateOfBirth: toIsoUtc(input.dateOfBirth),
-    nationalId: input.nationalId,
-    nationalityId: idOrNull(input.nationalityId),
-    contractTypeId: idOrNull(input.contractTypeId),
-    hireDate: toIsoUtc(input.joinDate),
-    jobTitleId: idOrNull(input.jobTitleId),
-    departmentId: idOrNull(input.departmentId),
-    branchId: idOrNull(input.branchId),
-    basicSalary: input.salary,
-    currency: "SAR",
+    ...toPayload(input),
   };
   return apiFetch<ApiEmployee>("/api/employees", { method: "POST", body: payload });
 }
 
 export async function updateEmployee(id: string, input: EmployeeInput): Promise<ApiEmployee> {
-  const { first, last } = splitName(input.name);
   const payload = {
     id,
-    firstName: first,
-    firstNameAr: first,
-    lastName: last,
-    lastNameAr: last,
-    email: input.email,
-    phone: input.phone,
-    gender: GENDER_TO_INT[input.gender] ?? 1,
-    dateOfBirth: toIsoUtc(input.dateOfBirth),
-    nationalId: input.nationalId,
-    nationalityId: idOrNull(input.nationalityId),
+    ...toPayload(input),
     status: STATUS_TO_INT[input.status ?? "نشط"] ?? 1,
-    contractTypeId: idOrNull(input.contractTypeId),
-    jobTitleId: idOrNull(input.jobTitleId),
-    departmentId: idOrNull(input.departmentId),
-    branchId: idOrNull(input.branchId),
-    basicSalary: input.salary,
   };
   return apiFetch<ApiEmployee>(`/api/employees/${id}`, { method: "PUT", body: payload });
 }

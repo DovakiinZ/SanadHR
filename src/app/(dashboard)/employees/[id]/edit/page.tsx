@@ -5,9 +5,8 @@ import Link from "next/link";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { EmployeeForm } from "@/components/employees/employee-form";
-import { getEmployee } from "@/lib/api/employees";
+import { getEmployeeRaw, ApiEmployee } from "@/lib/api/employees";
 import { ApiError } from "@/lib/api-client";
-import { Employee } from "@/types";
 
 export default function EditEmployeePage({
   params,
@@ -15,7 +14,7 @@ export default function EditEmployeePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const [employee, setEmployee] = useState<Employee | null>(null);
+  const [employee, setEmployee] = useState<ApiEmployee | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
@@ -25,7 +24,7 @@ export default function EditEmployeePage({
       setLoading(true);
       setNotFound(false);
       try {
-        const data = await getEmployee(id);
+        const data = await getEmployeeRaw(id);
         if (active) setEmployee(data);
       } catch (err) {
         if (!active) return;
@@ -53,7 +52,7 @@ export default function EditEmployeePage({
           الموظفين
         </Link>
         <span className="text-muted-foreground">/</span>
-        <span>{employee ? `تعديل ${employee.name}` : "تعديل موظف"}</span>
+        <span>{employee ? `تعديل ${employee.fullNameAr || employee.fullName}` : "تعديل موظف"}</span>
       </div>
 
       {/* Page Header */}
@@ -75,7 +74,7 @@ export default function EditEmployeePage({
           </Link>
         </div>
       ) : (
-        <EmployeeForm mode="edit" employeeId={id} initial={employee} />
+        <EmployeeForm mode="edit" employeeId={id} initial={employee ?? undefined} />
       )}
     </div>
   );

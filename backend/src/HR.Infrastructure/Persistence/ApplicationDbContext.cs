@@ -5,6 +5,7 @@ using HR.Domain.Engines.Automation;
 using HR.Domain.Engines.CompanyConfig;
 using HR.Domain.Engines.Dashboards;
 using HR.Domain.Engines.Documents;
+using HR.Domain.Engines.Files;
 using HR.Domain.Engines.Forms;
 using HR.Domain.Engines.MasterData;
 using HR.Domain.Engines.Metadata;
@@ -54,6 +55,7 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
 
     // Employees
     public DbSet<Employee> Employees => Set<Employee>();
+    public DbSet<EmployeeAllowance> EmployeeAllowances => Set<EmployeeAllowance>();
 
     // Tasks
     public DbSet<HrTask> HrTasks => Set<HrTask>();
@@ -66,6 +68,9 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
 
     // Audit
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+
+    // Files (DB-backed binary store: employee photos, attachments)
+    public DbSet<StoredFile> Files => Set<StoredFile>();
 
     // ===== Engine DbSets =====
 

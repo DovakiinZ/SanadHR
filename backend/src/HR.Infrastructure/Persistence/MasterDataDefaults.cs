@@ -85,6 +85,19 @@ public static class MasterDataDefaults
             ("HR", "HR & Personal", "الموارد البشرية والشخصية"),
             ("GENERAL", "General", "عام"));
 
+        Add(MasterDataObjectType.PaymentMethod,
+            ("BANK_TRANSFER", "Bank Transfer", "تحويل بنكي"),
+            ("CASH", "Cash", "نقدي"),
+            ("SALARY_CARD", "Salary Card", "بطاقة راتب"));
+
+        Add(MasterDataObjectType.PayrollGroup,
+            ("MONTHLY", "Monthly Payroll", "رواتب شهرية"),
+            ("HOURLY", "Hourly Payroll", "رواتب بالساعة"));
+
+        Add(MasterDataObjectType.LeavePolicy,
+            ("STANDARD", "Standard Policy", "السياسة القياسية"),
+            ("EXECUTIVE", "Executive Policy", "سياسة تنفيذية"));
+
         Add(MasterDataObjectType.ShiftType,
             ("MORNING", "Morning Shift", "وردية صباحية"),
             ("EVENING", "Evening Shift", "وردية مسائية"),

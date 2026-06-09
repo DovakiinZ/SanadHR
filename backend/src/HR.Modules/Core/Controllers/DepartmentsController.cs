@@ -2,6 +2,7 @@ using HR.Api.Controllers;
 using HR.Api.Filters;
 using HR.Application.Common.Exceptions;
 using HR.Application.Common.Models;
+using HR.Application.Engines.Audit;
 using HR.Infrastructure.Persistence;
 using HR.Modules.Core.Entities;
 using Microsoft.AspNetCore.Authorization;
@@ -16,10 +17,12 @@ namespace HR.Modules.Core.Controllers;
 public class DepartmentsController : BaseApiController
 {
     private readonly ApplicationDbContext _context;
+    private readonly IAuditEngine _audit;
 
-    public DepartmentsController(ApplicationDbContext context)
+    public DepartmentsController(ApplicationDbContext context, IAuditEngine audit)
     {
         _context = context;
+        _audit = audit;
     }
 
     [HttpGet]
@@ -84,6 +87,7 @@ public class DepartmentsController : BaseApiController
         _context.Departments.Add(department);
         await _context.SaveChangesAsync(ct);
 
+        await _audit.LogChange("Department", department.Id, "Created", null, new { department.Name, department.Code }, ct);
         return CreatedResponse(Map(department, null, null, null, null, null));
     }
 
@@ -96,6 +100,8 @@ public class DepartmentsController : BaseApiController
 
         if (request.ParentDepartmentId == id)
             throw new ConflictException("لا يمكن أن يكون القسم تابعاً لنفسه");
+        if (await WouldCreateCycleAsync(id, request.ParentDepartmentId, ct))
+            throw new ConflictException("لا يمكن نقل القسم إلى أحد أقسامه الفرعية");
 
         department.Name = request.Name;
         department.NameAr = request.NameAr;
@@ -110,6 +116,7 @@ public class DepartmentsController : BaseApiController
 
         await _context.SaveChangesAsync(ct);
 
+        await _audit.LogChange("Department", id, "Updated", null, new { department.Name, department.Code, department.ParentDepartmentId }, ct);
         return OkResponse(Map(department, null, null, null, null, null));
     }
 
@@ -127,7 +134,48 @@ public class DepartmentsController : BaseApiController
         department.DeletedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync(ct);
 
+        await _audit.LogChange("Department", id, "Deleted", new { department.Name }, null, ct);
         return OkResponse("Department deleted");
+    }
+
+    /// <summary>Reparent a department in the org chart (drag-drop). Guards against cycles.</summary>
+    [HttpPut("{id:guid}/parent")]
+    [RequirePermission("Departments.Edit")]
+    public async Task<ActionResult<ApiResponse<DepartmentDto>>> Reparent(
+        Guid id, [FromBody] ReparentDepartmentRequest request, CancellationToken ct)
+    {
+        var department = await _context.Departments.FindAsync(new object[] { id }, ct);
+        if (department == null) throw new NotFoundException("Department", id);
+
+        if (request.ParentDepartmentId == id)
+            throw new ConflictException("لا يمكن أن يكون القسم تابعاً لنفسه");
+        if (await WouldCreateCycleAsync(id, request.ParentDepartmentId, ct))
+            throw new ConflictException("لا يمكن نقل القسم إلى أحد أقسامه الفرعية");
+
+        var oldParent = department.ParentDepartmentId;
+        department.ParentDepartmentId = request.ParentDepartmentId;
+        await _context.SaveChangesAsync(ct);
+
+        await _audit.LogChange("Department", id, "Reparented",
+            new { ParentDepartmentId = oldParent }, new { department.ParentDepartmentId }, ct);
+
+        return OkResponse(Map(department, null, null, null, null, null));
+    }
+
+    // True if setting newParentId as id's parent would create a cycle (newParent is id or a descendant of id).
+    private async Task<bool> WouldCreateCycleAsync(Guid id, Guid? newParentId, CancellationToken ct)
+    {
+        var cursor = newParentId;
+        var guard = 0;
+        while (cursor.HasValue && guard++ < 1000)
+        {
+            if (cursor == id) return true;
+            cursor = await _context.Departments
+                .Where(d => d.Id == cursor)
+                .Select(d => d.ParentDepartmentId)
+                .FirstOrDefaultAsync(ct);
+        }
+        return false;
     }
 
     private static string? JoinName(string? first, string? last)
@@ -175,6 +223,11 @@ public class DepartmentDto
     public Guid? CostCenterId { get; set; }
     public string? CostCenterName { get; set; }
     public bool IsActive { get; set; }
+}
+
+public class ReparentDepartmentRequest
+{
+    public Guid? ParentDepartmentId { get; set; }
 }
 
 public class CreateDepartmentRequest

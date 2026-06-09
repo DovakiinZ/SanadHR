@@ -30,6 +30,11 @@ public class EmployeeDto
     public string? ContractType { get; set; }
     public string? ContractTypeAr { get; set; }
 
+    // Employment type (master data reference)
+    public Guid? EmploymentTypeId { get; set; }
+    public string? EmploymentType { get; set; }
+    public string? EmploymentTypeAr { get; set; }
+
     public DateTime HireDate { get; set; }
     public DateTime? TerminationDate { get; set; }
 
@@ -46,8 +51,52 @@ public class EmployeeDto
     public Guid? ManagerId { get; set; }
     public string? ManagerName { get; set; }
 
+    // Contact / emergency
+    public string? Address { get; set; }
+    public string? City { get; set; }
+    public string? EmergencyContactName { get; set; }
+    public string? EmergencyContactPhone { get; set; }
+
+    // Compensation & payment
     public decimal BasicSalary { get; set; }
     public string? Currency { get; set; }
+    public Guid? PaymentMethodId { get; set; }
+    public string? PaymentMethod { get; set; }
+    public string? PaymentMethodAr { get; set; }
+    public string? PaymentMethodCode { get; set; }   // BANK_TRANSFER | CASH | SALARY_CARD — drives conditional UI/export
+    public Guid? BankId { get; set; }
+    public string? Bank { get; set; }
+    public string? BankAr { get; set; }
+    public string? BankAccountNumber { get; set; }
+    public string? Iban { get; set; }
+    public string? SalaryCardNumber { get; set; }
+    public string? CardProvider { get; set; }
+
+    // Attendance & assignment (master data references)
+    public Guid? WorkLocationId { get; set; }
+    public string? WorkLocation { get; set; }
+    public string? WorkLocationAr { get; set; }
+    public Guid? LeavePolicyId { get; set; }
+    public string? LeavePolicy { get; set; }
+    public string? LeavePolicyAr { get; set; }
+    public Guid? PayrollGroupId { get; set; }
+    public string? PayrollGroup { get; set; }
+    public string? PayrollGroupAr { get; set; }
+
     public string? PhotoUrl { get; set; }
+    public string? Notes { get; set; }
+
+    public List<EmployeeAllowanceDto> Allowances { get; set; } = new();
+
     public DateTime CreatedAt { get; set; }
+}
+
+public class EmployeeAllowanceDto
+{
+    public Guid Id { get; set; }
+    public Guid AllowanceTypeId { get; set; }
+    public string? AllowanceType { get; set; }
+    public string? AllowanceTypeAr { get; set; }
+    public decimal Amount { get; set; }
+    public bool IsActive { get; set; }
 }

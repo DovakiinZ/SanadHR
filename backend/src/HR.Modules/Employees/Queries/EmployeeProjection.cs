@@ -8,84 +8,138 @@ namespace HR.Modules.Employees.Queries;
 
 /// <summary>
 /// Maps Employee entities to EmployeeDto, resolving governed master-data references
-/// (JobTitle / Nationality / ContractType) and Core org assignments (Department /
-/// Branch / Manager) to their display labels via left joins. Replaces AutoMapper for
-/// Employee reads so id-based references resolve to Arabic/English labels.
+/// (JobTitle / Nationality / ContractType / EmploymentType / PaymentMethod / Bank /
+/// WorkLocation / LeavePolicy / PayrollGroup) and Core org assignments (Department /
+/// Branch / Manager) to display labels. Resolves all master-data refs in a single
+/// dictionary lookup rather than a wide join, and loads per-employee allowances.
 /// </summary>
 public static class EmployeeProjection
 {
     public static async Task<List<EmployeeDto>> MapAsync(
         IQueryable<Employee> source, ApplicationDbContext ctx, CancellationToken ct)
     {
-        var rows = await (
-            from e in source
-            join jtx in ctx.MasterDataItems on e.JobTitleId equals (Guid?)jtx.Id into jtj
-            from jt in jtj.DefaultIfEmpty()
-            join natx in ctx.MasterDataItems on e.NationalityId equals (Guid?)natx.Id into natj
-            from nat in natj.DefaultIfEmpty()
-            join ctpx in ctx.MasterDataItems on e.ContractTypeId equals (Guid?)ctpx.Id into ctpj
-            from ctp in ctpj.DefaultIfEmpty()
-            join depx in ctx.Departments on e.DepartmentId equals (Guid?)depx.Id into depj
-            from dep in depj.DefaultIfEmpty()
-            join brx in ctx.Branch on e.BranchId equals (Guid?)brx.Id into brj
-            from br in brj.DefaultIfEmpty()
-            join mgrx in ctx.Employees on e.ManagerId equals (Guid?)mgrx.Id into mgrj
-            from mgr in mgrj.DefaultIfEmpty()
-            select new Row
-            {
-                E = e,
-                JobTitleEn = jt != null ? jt.NameEn : null,
-                JobTitleAr = jt != null ? jt.NameAr : null,
-                NationalityEn = nat != null ? nat.NameEn : null,
-                NationalityAr = nat != null ? nat.NameAr : null,
-                ContractEn = ctp != null ? ctp.NameEn : null,
-                ContractAr = ctp != null ? ctp.NameAr : null,
-                DepartmentName = dep != null ? (dep.NameAr ?? dep.Name) : null,
-                BranchName = br != null ? (br.NameAr ?? br.Name) : null,
-                ManagerFirst = mgr != null ? (mgr.FirstNameAr ?? mgr.FirstName) : null,
-                ManagerLast = mgr != null ? (mgr.LastNameAr ?? mgr.LastName) : null,
-            }).ToListAsync(ct);
+        var employees = await source.AsNoTracking().ToListAsync(ct);
+        if (employees.Count == 0) return new List<EmployeeDto>();
 
-        return rows
-            .Select(r => new EmployeeDto
+        var empIds = employees.Select(e => e.Id).ToList();
+
+        // Per-employee allowance overrides.
+        var allowances = await ctx.EmployeeAllowances
+            .Where(a => empIds.Contains(a.EmployeeId))
+            .Select(a => new { a.Id, a.EmployeeId, a.AllowanceTypeId, a.Amount, a.IsActive })
+            .ToListAsync(ct);
+
+        // Gather every master-data id referenced across the page, resolve in one query.
+        var mdIds = new HashSet<Guid>();
+        void Add(Guid? id) { if (id.HasValue) mdIds.Add(id.Value); }
+        foreach (var e in employees)
+        {
+            Add(e.JobTitleId); Add(e.NationalityId); Add(e.ContractTypeId); Add(e.EmploymentTypeId);
+            Add(e.PaymentMethodId); Add(e.BankId); Add(e.WorkLocationId); Add(e.LeavePolicyId); Add(e.PayrollGroupId);
+        }
+        foreach (var a in allowances) mdIds.Add(a.AllowanceTypeId);
+
+        var md = await ctx.MasterDataItems
+            .Where(m => mdIds.Contains(m.Id))
+            .Select(m => new { m.Id, m.Code, m.NameEn, m.NameAr })
+            .ToDictionaryAsync(m => m.Id, ct);
+
+        var depIds = employees.Where(e => e.DepartmentId.HasValue).Select(e => e.DepartmentId!.Value).ToHashSet();
+        var brIds = employees.Where(e => e.BranchId.HasValue).Select(e => e.BranchId!.Value).ToHashSet();
+        var mgrIds = employees.Where(e => e.ManagerId.HasValue).Select(e => e.ManagerId!.Value).ToHashSet();
+
+        var deps = await ctx.Departments.Where(d => depIds.Contains(d.Id))
+            .Select(d => new { d.Id, Name = d.NameAr ?? d.Name }).ToDictionaryAsync(d => d.Id, d => d.Name, ct);
+        var brs = await ctx.Branch.Where(b => brIds.Contains(b.Id))
+            .Select(b => new { b.Id, Name = b.NameAr ?? b.Name }).ToDictionaryAsync(b => b.Id, b => b.Name, ct);
+        var mgrs = await ctx.Employees.Where(m => mgrIds.Contains(m.Id))
+            .Select(m => new { m.Id, First = m.FirstNameAr ?? m.FirstName, Last = m.LastNameAr ?? m.LastName })
+            .ToDictionaryAsync(m => m.Id, ct);
+
+        string? En(Guid? id) => id.HasValue && md.TryGetValue(id.Value, out var x) ? x.NameEn : null;
+        string? Ar(Guid? id) => id.HasValue && md.TryGetValue(id.Value, out var x) ? x.NameAr : null;
+        string? Code(Guid? id) => id.HasValue && md.TryGetValue(id.Value, out var x) ? x.Code : null;
+
+        var allowancesByEmp = allowances
+            .GroupBy(a => a.EmployeeId)
+            .ToDictionary(g => g.Key, g => g.Select(a => new EmployeeAllowanceDto
             {
-                Id = r.E.Id,
-                EmployeeNumber = r.E.EmployeeNumber,
-                FirstName = r.E.FirstName,
-                FirstNameAr = r.E.FirstNameAr,
-                LastName = r.E.LastName,
-                LastNameAr = r.E.LastNameAr,
-                Email = r.E.Email,
-                Phone = r.E.Phone,
-                Gender = r.E.Gender.ToString(),
-                GenderAr = MapGenderAr(r.E.Gender),
-                DateOfBirth = r.E.DateOfBirth,
-                NationalId = r.E.NationalId,
-                NationalityId = r.E.NationalityId,
-                Nationality = r.NationalityEn,
-                NationalityAr = r.NationalityAr,
-                Status = r.E.Status.ToString(),
-                StatusAr = MapStatusAr(r.E.Status),
-                ContractTypeId = r.E.ContractTypeId,
-                ContractType = r.ContractEn,
-                ContractTypeAr = r.ContractAr,
-                HireDate = r.E.HireDate,
-                TerminationDate = r.E.TerminationDate,
-                JobTitleId = r.E.JobTitleId,
-                JobTitle = r.JobTitleEn,
-                JobTitleAr = r.JobTitleAr,
-                DepartmentId = r.E.DepartmentId,
-                DepartmentName = r.DepartmentName,
-                BranchId = r.E.BranchId,
-                BranchName = r.BranchName,
-                ManagerId = r.E.ManagerId,
-                ManagerName = BuildManagerName(r.ManagerFirst, r.ManagerLast),
-                BasicSalary = r.E.BasicSalary,
-                Currency = r.E.Currency,
-                PhotoUrl = r.E.PhotoUrl,
-                CreatedAt = r.E.CreatedAt,
-            })
-            .ToList();
+                Id = a.Id,
+                AllowanceTypeId = a.AllowanceTypeId,
+                AllowanceType = En(a.AllowanceTypeId),
+                AllowanceTypeAr = Ar(a.AllowanceTypeId),
+                Amount = a.Amount,
+                IsActive = a.IsActive,
+            }).ToList());
+
+        return employees.Select(e => new EmployeeDto
+        {
+            Id = e.Id,
+            EmployeeNumber = e.EmployeeNumber,
+            FirstName = e.FirstName,
+            FirstNameAr = e.FirstNameAr,
+            LastName = e.LastName,
+            LastNameAr = e.LastNameAr,
+            Email = e.Email,
+            Phone = e.Phone,
+            Gender = e.Gender.ToString(),
+            GenderAr = MapGenderAr(e.Gender),
+            DateOfBirth = e.DateOfBirth,
+            NationalId = e.NationalId,
+            NationalityId = e.NationalityId,
+            Nationality = En(e.NationalityId),
+            NationalityAr = Ar(e.NationalityId),
+            Status = e.Status.ToString(),
+            StatusAr = MapStatusAr(e.Status),
+            ContractTypeId = e.ContractTypeId,
+            ContractType = En(e.ContractTypeId),
+            ContractTypeAr = Ar(e.ContractTypeId),
+            EmploymentTypeId = e.EmploymentTypeId,
+            EmploymentType = En(e.EmploymentTypeId),
+            EmploymentTypeAr = Ar(e.EmploymentTypeId),
+            HireDate = e.HireDate,
+            TerminationDate = e.TerminationDate,
+            JobTitleId = e.JobTitleId,
+            JobTitle = En(e.JobTitleId),
+            JobTitleAr = Ar(e.JobTitleId),
+            DepartmentId = e.DepartmentId,
+            DepartmentName = e.DepartmentId.HasValue && deps.TryGetValue(e.DepartmentId.Value, out var dn) ? dn : null,
+            BranchId = e.BranchId,
+            BranchName = e.BranchId.HasValue && brs.TryGetValue(e.BranchId.Value, out var bn) ? bn : null,
+            ManagerId = e.ManagerId,
+            ManagerName = e.ManagerId.HasValue && mgrs.TryGetValue(e.ManagerId.Value, out var m)
+                ? BuildManagerName(m.First, m.Last) : null,
+            Address = e.Address,
+            City = e.City,
+            EmergencyContactName = e.EmergencyContactName,
+            EmergencyContactPhone = e.EmergencyContactPhone,
+            BasicSalary = e.BasicSalary,
+            Currency = e.Currency,
+            PaymentMethodId = e.PaymentMethodId,
+            PaymentMethod = En(e.PaymentMethodId),
+            PaymentMethodAr = Ar(e.PaymentMethodId),
+            PaymentMethodCode = Code(e.PaymentMethodId),
+            BankId = e.BankId,
+            Bank = En(e.BankId),
+            BankAr = Ar(e.BankId),
+            BankAccountNumber = e.BankAccountNumber,
+            Iban = e.Iban,
+            SalaryCardNumber = e.SalaryCardNumber,
+            CardProvider = e.CardProvider,
+            WorkLocationId = e.WorkLocationId,
+            WorkLocation = En(e.WorkLocationId),
+            WorkLocationAr = Ar(e.WorkLocationId),
+            LeavePolicyId = e.LeavePolicyId,
+            LeavePolicy = En(e.LeavePolicyId),
+            LeavePolicyAr = Ar(e.LeavePolicyId),
+            PayrollGroupId = e.PayrollGroupId,
+            PayrollGroup = En(e.PayrollGroupId),
+            PayrollGroupAr = Ar(e.PayrollGroupId),
+            PhotoUrl = e.PhotoUrl,
+            Notes = e.Notes,
+            Allowances = allowancesByEmp.TryGetValue(e.Id, out var al) ? al : new List<EmployeeAllowanceDto>(),
+            CreatedAt = e.CreatedAt,
+        }).ToList();
     }
 
     private static string? BuildManagerName(string? first, string? last)
@@ -110,19 +164,4 @@ public static class EmployeeProjection
         EmployeeStatus.Resigned => "مستقيل",
         _ => ""
     };
-
-    private class Row
-    {
-        public Employee E = null!;
-        public string? JobTitleEn;
-        public string? JobTitleAr;
-        public string? NationalityEn;
-        public string? NationalityAr;
-        public string? ContractEn;
-        public string? ContractAr;
-        public string? DepartmentName;
-        public string? BranchName;
-        public string? ManagerFirst;
-        public string? ManagerLast;
-    }
 }
