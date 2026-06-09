@@ -21,6 +21,7 @@ public static class MasterDataObjectType
     public const string DeductionType = "DeductionType";
     public const string DocumentType = "DocumentType";
     public const string RequestType = "RequestType";
+    public const string RequestCategory = "RequestCategory";
     public const string ShiftType = "ShiftType";
     public const string AttendancePolicy = "AttendancePolicy";
     public const string PayrollGroup = "PayrollGroup";
@@ -41,7 +42,7 @@ public static class MasterDataObjectType
     {
         JobTitle, Department, Branch, Position, Grade, CostCenter,
         EmploymentType, ContractType, LeaveType, AllowanceType, DeductionType,
-        DocumentType, RequestType, ShiftType, AttendancePolicy, PayrollGroup,
+        DocumentType, RequestType, RequestCategory, ShiftType, AttendancePolicy, PayrollGroup,
         LeavePolicy, WorkLocation, ExpenseCategory, LoanType, AssetType,
         RecruitmentSource, CandidateStage, Tag, Skill, Bank, Nationality
     };

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Building2, Database, ChevronLeft } from "lucide-react";
+import { Building2, Database, ChevronLeft, Inbox } from "lucide-react";
 
 const categories = [
   {
@@ -7,6 +7,12 @@ const categories = [
     title: "إعدادات المؤسسة",
     description: "الأقسام، الفروع، المسميات الوظيفية، المناصب، الدرجات، مراكز التكلفة",
     icon: Building2,
+  },
+  {
+    href: "/settings/requests",
+    title: "إعدادات الطلبات",
+    description: "أنواع الطلبات، الفئات، النماذج، مسارات الموافقة، اتفاقيات مستوى الخدمة",
+    icon: Inbox,
   },
 ];
 

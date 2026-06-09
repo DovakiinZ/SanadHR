@@ -77,6 +77,14 @@ public static class MasterDataDefaults
             ("LOAN", "Loan Request", "طلب قرض"),
             ("BUSINESS_TRIP", "Business Trip", "رحلة عمل"));
 
+        Add(MasterDataObjectType.RequestCategory,
+            ("TIME_OFF", "Time Off & Attendance", "الإجازات والحضور"),
+            ("FINANCE", "Finance & Payroll", "المالية والرواتب"),
+            ("LETTERS", "Letters & Certificates", "الخطابات والشهادات"),
+            ("IT", "IT & Equipment", "تقنية المعلومات والمعدات"),
+            ("HR", "HR & Personal", "الموارد البشرية والشخصية"),
+            ("GENERAL", "General", "عام"));
+
         Add(MasterDataObjectType.ShiftType,
             ("MORNING", "Morning Shift", "وردية صباحية"),
             ("EVENING", "Evening Shift", "وردية مسائية"),

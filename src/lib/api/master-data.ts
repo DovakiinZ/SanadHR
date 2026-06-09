@@ -107,6 +107,7 @@ export const TYPE_LABELS_AR: Record<string, string> = {
   DeductionType: "أنواع الاستقطاعات",
   DocumentType: "أنواع المستندات",
   RequestType: "أنواع الطلبات",
+  RequestCategory: "فئات الطلبات",
   ShiftType: "أنواع الورديات",
   AttendancePolicy: "سياسات الحضور",
   PayrollGroup: "مجموعات الرواتب",

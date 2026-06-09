@@ -7,6 +7,10 @@ export interface LookupItem {
   nameAr: string;
   nameEn: string;
   label: string;
+  description?: string | null;
+  color?: string | null;
+  icon?: string | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 export async function getLookup(slug: string): Promise<LookupItem[]> {
