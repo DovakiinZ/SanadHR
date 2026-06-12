@@ -4,8 +4,10 @@ using HR.Application.Common.Models;
 using HR.Modules.Platform.Commands.Dashboards;
 using HR.Modules.Platform.DTOs.Dashboards;
 using HR.Modules.Platform.Queries.Dashboards;
+using HR.Modules.Platform.Services.Dashboards;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace HR.Modules.Platform.Controllers;
 
@@ -13,6 +15,35 @@ namespace HR.Modules.Platform.Controllers;
 [Route("api/platform/dashboards")]
 public class DashboardsController : BaseApiController
 {
+    /// <summary>Idempotently provision the ready-made Executive dashboard for this tenant.</summary>
+    [HttpPost("seed-defaults")]
+    [RequirePermission("Platform.Dashboards.Create")]
+    public async Task<ActionResult<ApiResponse<Guid>>> SeedDefaults(CancellationToken ct)
+    {
+        var seeder = HttpContext.RequestServices.GetRequiredService<IDashboardSeeder>();
+        var id = await seeder.SeedExecutiveAsync(ct);
+        return OkResponse(id, "Default dashboard ready");
+    }
+
+    /// <summary>List the built-in ready-made dashboard templates the seeder can provision.</summary>
+    [HttpGet("ready-templates")]
+    [RequirePermission("Platform.Dashboards.View")]
+    public ActionResult<ApiResponse<IReadOnlyList<DashboardTemplateInfo>>> ReadyTemplates()
+    {
+        var seeder = HttpContext.RequestServices.GetRequiredService<IDashboardSeeder>();
+        return OkResponse(seeder.AvailableTemplates());
+    }
+
+    /// <summary>Idempotently provision one ready-made template by key (executive|hr|payroll|operations).</summary>
+    [HttpPost("seed-template/{key}")]
+    [RequirePermission("Platform.Dashboards.Create")]
+    public async Task<ActionResult<ApiResponse<Guid>>> SeedTemplate(string key, CancellationToken ct)
+    {
+        var seeder = HttpContext.RequestServices.GetRequiredService<IDashboardSeeder>();
+        var id = await seeder.SeedTemplateAsync(key, ct);
+        return OkResponse(id, "Template applied");
+    }
+
     [HttpGet]
     [RequirePermission("Platform.Dashboards.View")]
     public async Task<ActionResult<ApiResponse<PaginatedList<DashboardDefinitionDto>>>> GetAll([FromQuery] GetDashboardsQuery query, CancellationToken ct)

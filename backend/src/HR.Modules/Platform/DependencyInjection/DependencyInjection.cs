@@ -35,6 +35,16 @@ public static class DependencyInjection
         services.AddScoped<ILookupService, LookupService>();
         services.AddScoped<IUsageTrackingService, UsageTrackingService>();
 
+        // Dashboard Platform — object-driven discovery + aggregation + seeding
+        services.AddScoped<HR.Modules.Platform.Services.Catalog.IObjectCatalogService,
+            HR.Modules.Platform.Services.Catalog.ObjectCatalogService>();
+        services.AddScoped<HR.Modules.Platform.Services.WidgetData.IWidgetDataService,
+            HR.Modules.Platform.Services.WidgetData.WidgetDataService>();
+        services.AddScoped<HR.Modules.Platform.Services.WidgetData.IWidgetSuggestionService,
+            HR.Modules.Platform.Services.WidgetData.WidgetSuggestionService>();
+        services.AddScoped<HR.Modules.Platform.Services.Dashboards.IDashboardSeeder,
+            HR.Modules.Platform.Services.Dashboards.DashboardSeeder>();
+
         return services;
     }
 }
