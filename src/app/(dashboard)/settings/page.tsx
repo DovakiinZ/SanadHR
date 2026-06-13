@@ -1,7 +1,13 @@
 import Link from "next/link";
-import { Building2, Database, ChevronLeft, Inbox, Wallet, CalendarDays } from "lucide-react";
+import { Building2, Database, ChevronLeft, Inbox, Wallet, CalendarDays, Landmark } from "lucide-react";
 
 const categories = [
+  {
+    href: "/settings/company",
+    title: "إعدادات الشركة",
+    description: "هوية الشركة، الشعار، الختم، السجل التجاري، الرقم الضريبي، التواصل والعنوان — تُستخدم في المستندات",
+    icon: Landmark,
+  },
   {
     href: "/settings/leave",
     title: "إعدادات الإجازات",

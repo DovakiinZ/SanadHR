@@ -10,8 +10,18 @@ public class CompanyProfile : TenantEntity
     public string? StampUrl { get; set; }
     public string? CommercialRegistration { get; set; }
     public string? VatNumber { get; set; }
-    public string? NationalAddress { get; set; } // JSONB
-    public string? ContactInfo { get; set; } // JSONB - phones, emails, website
+
+    // Canonical contact + address (used by documents/reports/printing — single source).
+    public string? Website { get; set; }
+    public string? Email { get; set; }
+    public string? Phone { get; set; }
+    public string? Address { get; set; }
+    public string? City { get; set; }
+    public string? Country { get; set; }
+    public string? PostalCode { get; set; }
+
+    public string? NationalAddress { get; set; } // JSONB (legacy structured address)
+    public string? ContactInfo { get; set; } // JSONB (legacy structured contact)
     public string? FiscalYearStart { get; set; } // MM-DD
     public string? DefaultCurrency { get; set; }
     public string? DefaultLanguage { get; set; }

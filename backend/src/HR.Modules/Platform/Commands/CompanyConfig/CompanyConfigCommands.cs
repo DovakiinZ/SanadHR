@@ -18,6 +18,13 @@ public record UpdateCompanyProfileCommand : IRequest<CompanyProfileDto>
     public string? StampUrl { get; init; }
     public string? CommercialRegistration { get; init; }
     public string? VatNumber { get; init; }
+    public string? Website { get; init; }
+    public string? Email { get; init; }
+    public string? Phone { get; init; }
+    public string? Address { get; init; }
+    public string? City { get; init; }
+    public string? Country { get; init; }
+    public string? PostalCode { get; init; }
     public string? NationalAddress { get; init; }
     public string? ContactInfo { get; init; }
     public string? FiscalYearStart { get; init; }
@@ -177,8 +184,15 @@ public class UpdateCompanyProfileCommandHandler : IRequestHandler<UpdateCompanyP
 
     public async Task<CompanyProfileDto> Handle(UpdateCompanyProfileCommand request, CancellationToken cancellationToken)
     {
-        var entity = await _context.Set<CompanyProfile>().FirstOrDefaultAsync(x => x.Id == request.Id, cancellationToken)
-            ?? throw new InvalidOperationException("Company profile not found");
+        // Upsert: one canonical company profile per tenant (create on first save).
+        var entity = request.Id != Guid.Empty
+            ? await _context.Set<CompanyProfile>().FirstOrDefaultAsync(x => x.Id == request.Id, cancellationToken)
+            : await _context.Set<CompanyProfile>().FirstOrDefaultAsync(cancellationToken);
+        if (entity is null)
+        {
+            entity = new CompanyProfile();
+            _context.Set<CompanyProfile>().Add(entity);
+        }
 
         entity.NameEn = request.NameEn;
         entity.NameAr = request.NameAr;
@@ -186,6 +200,13 @@ public class UpdateCompanyProfileCommandHandler : IRequestHandler<UpdateCompanyP
         entity.StampUrl = request.StampUrl;
         entity.CommercialRegistration = request.CommercialRegistration;
         entity.VatNumber = request.VatNumber;
+        entity.Website = request.Website;
+        entity.Email = request.Email;
+        entity.Phone = request.Phone;
+        entity.Address = request.Address;
+        entity.City = request.City;
+        entity.Country = request.Country;
+        entity.PostalCode = request.PostalCode;
         entity.NationalAddress = request.NationalAddress;
         entity.ContactInfo = request.ContactInfo;
         entity.FiscalYearStart = request.FiscalYearStart;

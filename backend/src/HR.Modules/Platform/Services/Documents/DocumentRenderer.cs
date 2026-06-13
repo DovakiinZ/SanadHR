@@ -103,7 +103,13 @@ public sealed class DocumentRenderer : IDocumentRenderer
                                 company?.VatNumber is { Length: > 0 } vat ? $"ض.ق.م: {vat}" : null,
                             }.Where(s => s is not null));
                             if (line.Length > 0) c.Item().Text(line).FontSize(9).FontColor(Colors.Grey.Medium);
-                            var contactLine = string.Join("  •  ", new[] { Str(contact, "phone"), Str(contact, "email"), Str(contact, "website"), Str(address, "city") }.Where(s => !string.IsNullOrWhiteSpace(s)));
+                            var contactLine = string.Join("  •  ", new[]
+                            {
+                                company?.Phone ?? Str(contact, "phone"),
+                                company?.Email ?? Str(contact, "email"),
+                                company?.Website ?? Str(contact, "website"),
+                                string.Join(" ", new[] { company?.Address, company?.City, company?.Country }.Where(s => !string.IsNullOrWhiteSpace(s))) is { Length: > 0 } addr ? addr : Str(address, "city"),
+                            }.Where(s => !string.IsNullOrWhiteSpace(s)));
                             if (contactLine.Length > 0) c.Item().Text(contactLine).FontSize(9).FontColor(Colors.Grey.Medium);
                         });
                         if (logo is not null) row.ConstantItem(90).AlignLeft().Height(60).Image(logo).FitHeight();
