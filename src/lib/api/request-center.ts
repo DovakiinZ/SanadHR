@@ -1,6 +1,7 @@
 // Request Center API — talks to the new object-driven request engine.
 // Only fully-provisioned request types are returned, so every visible request is usable.
-import { apiFetch } from "../api-client";
+import { apiFetch, API_BASE_URL } from "../api-client";
+import { getAccessToken } from "../auth-storage";
 
 export interface RequestType {
   id: string;
@@ -155,6 +156,34 @@ export const previewLeave = (leaveTypeId: string, startDate?: string, endDate?: 
     method: "POST",
     body: { leaveTypeId, startDate, endDate, hasAttachment },
   });
+
+// ── Admin: leave balances ──
+export const getEmployeeLeaveBalances = (employeeId: string) =>
+  apiFetch<LeaveTypeInfo[]>(`/api/requests/admin/leave-balances?employeeId=${employeeId}`);
+
+export const setLeaveBalance = (employeeId: string, leaveTypeId: string, entitledDays: number, carriedForwardDays: number) =>
+  apiFetch<unknown>("/api/requests/admin/leave-balances", {
+    method: "PUT",
+    body: { employeeId, leaveTypeId, entitledDays, carriedForwardDays },
+  });
+
+// ── Document download (official PDF, streamed with auth) ──
+export async function downloadRequestDocument(requestId: string, fileName = "document.pdf"): Promise<void> {
+  const token = getAccessToken();
+  const res = await fetch(`${API_BASE_URL}/api/requests/${requestId}/document`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error("تعذر تحميل المستند");
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 // ── helpers ──
 export function requestStatusLabel(status: string): string {

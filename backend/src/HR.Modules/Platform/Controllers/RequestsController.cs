@@ -41,6 +41,31 @@ public class RequestsController : BaseApiController
         return OkResponse(await _leave.GetLeaveTypesAsync(empId.Value, ct));
     }
 
+    /// <summary>Admin: an employee's leave types with their balances (entitled/used/remaining).</summary>
+    [HttpGet("admin/leave-balances")]
+    [HR.Api.Filters.RequirePermission("Platform.MasterData.Edit")]
+    public async Task<ActionResult<ApiResponse<List<LeaveTypeInfo>>>> AdminLeaveBalances([FromQuery] Guid employeeId, CancellationToken ct)
+        => OkResponse(await _leave.GetLeaveTypesAsync(employeeId, ct));
+
+    /// <summary>Admin: set an employee's entitled / carried-forward balance for a leave type.</summary>
+    [HttpPut("admin/leave-balances")]
+    [HR.Api.Filters.RequirePermission("Platform.MasterData.Edit")]
+    public async Task<ActionResult<ApiResponse>> SetLeaveBalance([FromBody] SetLeaveBalanceBody body, CancellationToken ct)
+    {
+        var year = DateTime.UtcNow.Year;
+        var bal = await _db.LeaveBalances.FirstOrDefaultAsync(
+            b => b.EmployeeId == body.EmployeeId && b.LeaveTypeId == body.LeaveTypeId && b.Year == year, ct);
+        if (bal is null)
+        {
+            bal = new HR.Domain.Engines.Leave.LeaveBalance { EmployeeId = body.EmployeeId, LeaveTypeId = body.LeaveTypeId, Year = year };
+            _db.LeaveBalances.Add(bal);
+        }
+        bal.EntitledDays = body.EntitledDays;
+        bal.CarriedForwardDays = body.CarriedForwardDays;
+        await _db.SaveChangesAsync(ct);
+        return OkResponse("Balance updated");
+    }
+
     /// <summary>Live preview for the leave wizard: days, balance before/after, next approver, validation.</summary>
     [HttpPost("leave/preview")]
     public async Task<ActionResult<ApiResponse<LeavePreview>>> LeavePreview([FromBody] LeavePreviewBody body, CancellationToken ct)
@@ -167,6 +192,15 @@ public class RequestsController : BaseApiController
         return dto is null ? NotFound(ApiResponse.Fail("Request not found")) : OkResponse(dto);
     }
 
+    /// <summary>Download the official PDF for a request (logo, CR/VAT, details, approvals, QR).</summary>
+    [HttpGet("{id:guid}/document")]
+    public async Task<IActionResult> Document(Guid id, CancellationToken ct)
+    {
+        var renderer = HttpContext.RequestServices.GetRequiredService<Services.Documents.IDocumentRenderer>();
+        var (pdf, fileName) = await renderer.RenderRequestPdfAsync(id, ct);
+        return File(pdf, "application/pdf", fileName);
+    }
+
     // ── Projection helpers ──────────────────────────────────────────────────────
 
     private static readonly System.Linq.Expressions.Expression<Func<Domain.Engines.Requests.RequestInstance, RequestInstanceDto>> ProjectInstance =
@@ -244,6 +278,14 @@ public sealed class LeavePreviewBody
     public string? StartDate { get; set; }
     public string? EndDate { get; set; }
     public bool HasAttachment { get; set; }
+}
+
+public sealed class SetLeaveBalanceBody
+{
+    public Guid EmployeeId { get; set; }
+    public Guid LeaveTypeId { get; set; }
+    public decimal EntitledDays { get; set; }
+    public decimal CarriedForwardDays { get; set; }
 }
 
 public sealed class RequestFieldDto

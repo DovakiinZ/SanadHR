@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { ApiError } from "@/lib/api-client";
 import { requestIcon } from "@/lib/request-icons";
 import {
-  approveRequest, cancelRequest, getInbox, getMyRequests, getRequestType, getRequestTypes,
+  approveRequest, cancelRequest, downloadRequestDocument, getInbox, getMyRequests, getRequestType, getRequestTypes,
   rejectRequest, RequestInstance, RequestType, RequestTypeDetail,
   requestStatusColor, requestStatusLabel,
 } from "@/lib/api/request-center";
@@ -220,9 +220,16 @@ function DetailDrawer({ instance, onClose, onApprove, onReject, onCancel }: {
         </div>
 
         <div className="flex-1 space-y-5 overflow-auto p-5">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className={`border px-2 py-1 text-xs ${requestStatusColor(instance.status)}`}>{requestStatusLabel(instance.status)}</span>
-            {instance.generatedDocumentId && <span className="inline-flex items-center gap-1 border border-green-500/30 bg-green-500/10 px-2 py-1 text-xs text-green-400"><FileText className="h-3 w-3" /> تم إصدار المستند</span>}
+            {instance.generatedDocumentId && (
+              <button
+                onClick={() => downloadRequestDocument(instance.id, `${instance.requestNumber}.pdf`).catch(() => toast.error("تعذر تحميل المستند"))}
+                className="inline-flex items-center gap-1 border border-green-500/30 bg-green-500/10 px-2 py-1 text-xs text-green-400 hover:bg-green-500/20"
+              >
+                <FileText className="h-3 w-3" /> تحميل المستند الرسمي
+              </button>
+            )}
           </div>
 
           {(instance.startDate || instance.daysCount) && (

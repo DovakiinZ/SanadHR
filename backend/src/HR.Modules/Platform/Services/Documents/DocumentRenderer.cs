@@ -1,0 +1,191 @@
+using System.Text.Json;
+using HR.Domain.Engines.MasterData;
+using HR.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+using QRCoder;
+using QuestPDF.Fluent;
+using QuestPDF.Helpers;
+using QuestPDF.Infrastructure;
+
+namespace HR.Modules.Platform.Services.Documents;
+
+/// <summary>Renders an official PDF for an approved request (logo, CR/VAT, employee +
+/// request details, approvals, QR, stamp) using QuestPDF — works on Linux, no native deps.</summary>
+public interface IDocumentRenderer
+{
+    Task<(byte[] pdf, string fileName)> RenderRequestPdfAsync(Guid requestInstanceId, CancellationToken ct);
+}
+
+public sealed class DocumentRenderer : IDocumentRenderer
+{
+    private readonly ApplicationDbContext _db;
+    private const string FontFamily = "Thmanyah Sans";
+
+    static DocumentRenderer()
+    {
+        QuestPDF.Settings.License = LicenseType.Community;
+        try
+        {
+            var dir = Path.Combine(AppContext.BaseDirectory, "Fonts");
+            if (Directory.Exists(dir))
+                foreach (var f in Directory.GetFiles(dir, "*.otf"))
+                    QuestPDF.Drawing.FontManager.RegisterFont(File.OpenRead(f));
+        }
+        catch { /* fall back to system fonts */ }
+    }
+
+    public DocumentRenderer(ApplicationDbContext db) => _db = db;
+
+    public async Task<(byte[] pdf, string fileName)> RenderRequestPdfAsync(Guid requestInstanceId, CancellationToken ct)
+    {
+        var instance = await _db.RequestInstances.Include(r => r.RequestType)
+            .FirstOrDefaultAsync(r => r.Id == requestInstanceId, ct)
+            ?? throw new HR.Application.Common.Exceptions.NotFoundException("RequestInstance", requestInstanceId);
+
+        var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == instance.EmployeeId, ct);
+        var company = await _db.CompanyProfiles.FirstOrDefaultAsync(ct);
+        var approvals = await _db.RequestApprovals.Where(a => a.RequestInstanceId == requestInstanceId)
+            .OrderBy(a => a.StepOrder).ToListAsync(ct);
+
+        string? title = null;
+        if (instance.RequestType.PrintTemplateId is { } tplId)
+            title = await _db.DocumentTemplates.Where(t => t.Id == tplId).Select(t => t.NameAr).FirstOrDefaultAsync(ct);
+        title ??= instance.RequestType.NameAr;
+
+        var department = employee?.DepartmentId is { } depId
+            ? await _db.Departments.Where(d => d.Id == depId).Select(d => d.NameAr).FirstOrDefaultAsync(ct) : null;
+        var jobTitle = employee?.JobTitleId is { } jtId
+            ? await _db.MasterDataItems.Where(m => m.Id == jtId).Select(m => m.NameAr).FirstOrDefaultAsync(ct) : null;
+        var leaveType = instance.LeaveTypeId is { } ltId
+            ? await _db.MasterDataItems.Where(m => m.Id == ltId).Select(m => m.NameAr).FirstOrDefaultAsync(ct) : null;
+
+        var logo = await LoadImageAsync(company?.LogoUrl, ct);
+        var stamp = await LoadImageAsync(company?.StampUrl, ct);
+        var contact = ParseJson(company?.ContactInfo);
+        var address = ParseJson(company?.NationalAddress);
+
+        var employeeName = employee is null ? "—" : $"{employee.FirstNameAr ?? employee.FirstName} {employee.LastNameAr ?? employee.LastName}".Trim();
+        var generatedDate = DateTime.UtcNow.ToString("yyyy-MM-dd");
+        var qr = MakeQr($"{company?.NameAr} | {instance.RequestNumber} | {employeeName} | {generatedDate}");
+
+        var details = new List<(string, string)>
+        {
+            ("اسم الموظف", employeeName),
+            ("الرقم الوظيفي", employee?.EmployeeNumber ?? "—"),
+            ("الإدارة", department ?? "—"),
+            ("المسمى الوظيفي", jobTitle ?? "—"),
+        };
+        if (leaveType is not null) details.Add(("نوع الإجازة", leaveType));
+        if (instance.StartDate is { } sd) details.Add(("من", sd.ToString("yyyy-MM-dd")));
+        if (instance.EndDate is { } ed) details.Add(("إلى", ed.ToString("yyyy-MM-dd")));
+        if (instance.DaysCount is { } dc) details.Add(("عدد الأيام", $"{dc}"));
+
+        var pdf = Document.Create(doc =>
+        {
+            doc.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(36);
+                page.DefaultTextStyle(x => x.FontFamily(FontFamily).FontSize(11).DirectionFromRightToLeft());
+
+                // Header — company identity
+                page.Header().Column(col =>
+                {
+                    col.Item().Row(row =>
+                    {
+                        row.RelativeItem().Column(c =>
+                        {
+                            c.Item().Text(company?.NameAr ?? "الشركة").FontSize(16).Bold();
+                            if (!string.IsNullOrWhiteSpace(company?.NameEn)) c.Item().Text(company!.NameEn).FontSize(10).FontColor(Colors.Grey.Medium);
+                            var line = string.Join("  •  ", new[]
+                            {
+                                company?.CommercialRegistration is { Length: > 0 } cr ? $"س.ت: {cr}" : null,
+                                company?.VatNumber is { Length: > 0 } vat ? $"ض.ق.م: {vat}" : null,
+                            }.Where(s => s is not null));
+                            if (line.Length > 0) c.Item().Text(line).FontSize(9).FontColor(Colors.Grey.Medium);
+                            var contactLine = string.Join("  •  ", new[] { Str(contact, "phone"), Str(contact, "email"), Str(contact, "website"), Str(address, "city") }.Where(s => !string.IsNullOrWhiteSpace(s)));
+                            if (contactLine.Length > 0) c.Item().Text(contactLine).FontSize(9).FontColor(Colors.Grey.Medium);
+                        });
+                        if (logo is not null) row.ConstantItem(90).AlignLeft().Height(60).Image(logo).FitHeight();
+                    });
+                    col.Item().PaddingTop(8).LineHorizontal(1).LineColor(Colors.Grey.Lighten1);
+                });
+
+                page.Content().PaddingVertical(16).Column(col =>
+                {
+                    col.Spacing(14);
+                    col.Item().AlignCenter().Text(title).FontSize(15).Bold();
+                    col.Item().Text($"رقم الطلب: {instance.RequestNumber}").FontSize(10).FontColor(Colors.Grey.Medium);
+
+                    // Details table
+                    col.Item().Table(table =>
+                    {
+                        table.ColumnsDefinition(c => { c.RelativeColumn(1); c.RelativeColumn(2); });
+                        foreach (var (k, v) in details)
+                        {
+                            table.Cell().Background(Colors.Grey.Lighten4).Padding(6).Text(k).Bold().FontSize(10);
+                            table.Cell().Padding(6).Text(v).FontSize(10);
+                        }
+                    });
+
+                    // Approvals
+                    if (approvals.Count > 0)
+                    {
+                        col.Item().PaddingTop(6).Text("سلسلة الموافقات").Bold();
+                        col.Item().Column(ac =>
+                        {
+                            foreach (var a in approvals)
+                                ac.Item().Text($"{a.StepOrder}. {a.StepNameAr} — {StatusAr(a.Status.ToString())}").FontSize(10);
+                        });
+                    }
+                });
+
+                // Footer — QR, stamp, date
+                page.Footer().Column(col =>
+                {
+                    col.Item().PaddingTop(6).LineHorizontal(1).LineColor(Colors.Grey.Lighten1);
+                    col.Item().PaddingTop(6).Row(row =>
+                    {
+                        row.ConstantItem(70).Height(70).Image(qr).FitArea();
+                        row.RelativeItem().AlignMiddle().Text($"تاريخ الإصدار: {generatedDate}").FontSize(9).FontColor(Colors.Grey.Medium);
+                        if (stamp is not null) row.ConstantItem(80).Height(70).AlignLeft().Image(stamp).FitArea();
+                    });
+                });
+            });
+        }).GeneratePdf();
+
+        return (pdf, $"{instance.RequestType.Code}-{instance.RequestNumber}.pdf");
+    }
+
+    // ── helpers ──
+
+    private static byte[] MakeQr(string text)
+    {
+        using var gen = new QRCodeGenerator();
+        using var data = gen.CreateQrCode(text, QRCodeGenerator.ECCLevel.Q);
+        return new PngByteQRCode(data).GetGraphic(20);
+    }
+
+    private async Task<byte[]?> LoadImageAsync(string? url, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return null;
+        var idx = url.LastIndexOf('/');
+        var idPart = idx >= 0 ? url[(idx + 1)..] : url;
+        if (!Guid.TryParse(idPart, out var fileId)) return null;
+        return await _db.Files.Where(f => f.Id == fileId).Select(f => f.Data).FirstOrDefaultAsync(ct);
+    }
+
+    private static Dictionary<string, JsonElement>? ParseJson(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try { return JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json); } catch { return null; }
+    }
+
+    private static string? Str(Dictionary<string, JsonElement>? d, string key)
+        => d is not null && d.TryGetValue(key, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+
+    private static string StatusAr(string status) => status switch
+    {
+        "Approved" => "تمت الموافقة", "Rejected" => "مرفوض", "Pending" => "بانتظار", "Skipped" => "تم التخطي", _ => status,
+    };
+}

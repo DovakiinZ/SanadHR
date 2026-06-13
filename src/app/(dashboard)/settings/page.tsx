@@ -1,7 +1,13 @@
 import Link from "next/link";
-import { Building2, Database, ChevronLeft, Inbox, Wallet } from "lucide-react";
+import { Building2, Database, ChevronLeft, Inbox, Wallet, CalendarDays } from "lucide-react";
 
 const categories = [
+  {
+    href: "/settings/leave",
+    title: "إعدادات الإجازات",
+    description: "أنواع الإجازات وقواعدها (مدفوعة/رصيد/مرفقات) وأرصدة الموظفين",
+    icon: CalendarDays,
+  },
   {
     href: "/settings/organization",
     title: "إعدادات المؤسسة",

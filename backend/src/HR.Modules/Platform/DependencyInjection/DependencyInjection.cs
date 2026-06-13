@@ -53,6 +53,10 @@ public static class DependencyInjection
         services.AddScoped<HR.Modules.Platform.Services.Requests.IRequestSeeder,
             HR.Modules.Platform.Services.Requests.RequestSeeder>();
 
+        // Official document rendering (QuestPDF)
+        services.AddScoped<HR.Modules.Platform.Services.Documents.IDocumentRenderer,
+            HR.Modules.Platform.Services.Documents.DocumentRenderer>();
+
         return services;
     }
 }
