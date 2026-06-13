@@ -1,237 +1,270 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Loader2, Inbox, Send } from "lucide-react";
+import { type ElementType, useCallback, useEffect, useMemo, useState } from "react";
+import { Check, FileCheck, Inbox, Loader2, Send, X, Clock, FileText } from "lucide-react";
 import { toast } from "sonner";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { ApiError } from "@/lib/api-client";
-import { getLookup, lookupLabel, LookupItem } from "@/lib/api/lookups";
-import { getFormDefinition, submitForm, FormDefinition, FormField, FormSubmissionValueInput } from "@/lib/api/forms";
-import { startWorkflow } from "@/lib/api/workflows";
 import { requestIcon } from "@/lib/request-icons";
+import {
+  approveRequest, cancelRequest, getInbox, getMyRequests, getRequestType, getRequestTypes,
+  rejectRequest, RequestInstance, RequestType, RequestTypeDetail,
+  requestStatusColor, requestStatusLabel,
+} from "@/lib/api/request-center";
+import { RequestForm } from "@/components/requests/request-form";
 
-function notifyError(err: unknown, fallback: string) {
-  if (!(err instanceof ApiError) || ![401, 403, 500].includes(err.status)) {
-    toast.error(err instanceof ApiError ? err.message : fallback);
-  }
-}
-
-interface ReqMeta {
-  categoryId?: string;
-  formDefinitionId?: string;
-  workflowCode?: string;
-  slaHours?: number | null;
-}
-
-function readMeta(item: LookupItem): ReqMeta {
-  return (item.metadata ?? {}) as ReqMeta;
-}
-
-// Map a backend FieldType string to an input renderer hint.
-function inputType(fieldType: string): string {
-  switch (fieldType) {
-    case "Number": case "Decimal": case "Currency": case "Percentage": return "number";
-    case "Date": return "date";
-    case "DateTime": return "datetime-local";
-    case "Email": return "email";
-    case "Phone": return "tel";
-    case "Url": return "url";
-    default: return "text";
-  }
-}
-
-function parseOptions(raw?: string | null): { value: string; label: string }[] {
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) {
-      return parsed.map((o) =>
-        typeof o === "string" ? { value: o, label: o } : { value: String(o.value ?? o.code ?? ""), label: String(o.label ?? o.nameAr ?? o.value ?? "") }
-      );
-    }
-  } catch { /* not JSON — ignore */ }
-  return [];
-}
+type Tab = "submit" | "mine" | "inbox";
 
 export default function RequestsPage() {
-  const [types, setTypes] = useState<LookupItem[]>([]);
-  const [categories, setCategories] = useState<LookupItem[]>([]);
+  const [tab, setTab] = useState<Tab>("submit");
+  const [types, setTypes] = useState<RequestType[]>([]);
+  const [mine, setMine] = useState<RequestInstance[]>([]);
+  const [inbox, setInbox] = useState<RequestInstance[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeType, setActiveType] = useState<RequestTypeDetail | null>(null);
+  const [loadingType, setLoadingType] = useState(false);
+  const [detail, setDetail] = useState<RequestInstance | null>(null);
 
-  const [active, setActive] = useState<LookupItem | null>(null);
-  const [formDef, setFormDef] = useState<FormDefinition | null>(null);
-  const [loadingForm, setLoadingForm] = useState(false);
-  const [values, setValues] = useState<Record<string, string>>({});
-  const [submitting, setSubmitting] = useState(false);
-
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      try {
-        const [ts, cats] = await Promise.all([getLookup("request-types"), getLookup("request-categories")]);
-        setTypes(ts); setCategories(cats);
-      } catch (err) { notifyError(err, "تعذر تحميل أنواع الطلبات"); }
-      finally { setLoading(false); }
-    })();
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [t, m, i] = await Promise.all([getRequestTypes(), getMyRequests(), getInbox()]);
+      setTypes(t); setMine(m); setInbox(i);
+    } catch (e) {
+      if (!(e instanceof ApiError) || ![401, 403, 500].includes(e.status)) toast.error("تعذر تحميل الطلبات");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const catName = useMemo(() => {
-    const m = new Map(categories.map((c) => [c.id, lookupLabel(c)]));
-    return (id?: string) => (id ? m.get(id) ?? null : null);
-  }, [categories]);
+  useEffect(() => { refresh(); }, [refresh]);
 
-  async function openType(item: LookupItem) {
-    setActive(item);
-    setFormDef(null);
-    setValues({});
-    const meta = readMeta(item);
-    if (!meta.formDefinitionId) return;
-    setLoadingForm(true);
+  const openType = async (t: RequestType) => {
+    setLoadingType(true);
     try {
-      const def = await getFormDefinition(meta.formDefinitionId);
-      setFormDef(def);
-      const init: Record<string, string> = {};
-      def.fields.forEach((f) => { init[f.id] = f.defaultValue ?? ""; });
-      setValues(init);
-    } catch (err) { notifyError(err, "تعذر تحميل النموذج"); }
-    finally { setLoadingForm(false); }
-  }
-
-  function closeDialog() { if (!submitting) { setActive(null); setFormDef(null); setValues({}); } }
-
-  async function submit() {
-    if (!active) return;
-    const meta = readMeta(active);
-
-    if (formDef) {
-      const missing = formDef.fields.filter((f) => f.isRequired && !values[f.id]?.trim());
-      if (missing.length) { toast.error(`حقول مطلوبة: ${missing.map((f) => f.nameAr).join("، ")}`); return; }
+      setActiveType(await getRequestType(t.id));
+    } catch {
+      toast.error("تعذر فتح النموذج");
+    } finally {
+      setLoadingType(false);
     }
+  };
 
-    setSubmitting(true);
+  const system = useMemo(() => types.filter((t) => t.kind === "System"), [types]);
+  const dynamic = useMemo(() => types.filter((t) => t.kind !== "System"), [types]);
+
+  const decide = async (id: string, approve: boolean) => {
     try {
-      let submissionId: string | null = null;
-      if (formDef) {
-        const payload: FormSubmissionValueInput[] = formDef.fields.map((f) => ({
-          formFieldId: f.id, fieldCode: f.code, value: values[f.id] ?? "",
-        }));
-        const submission = await submitForm(formDef.id, payload);
-        submissionId = submission.id;
-      }
-
-      // Kick off the approval workflow when one is linked (best-effort; needs permission).
-      if (meta.workflowCode && submissionId) {
-        try { await startWorkflow(meta.workflowCode, "FormSubmission", submissionId); }
-        catch { /* workflow start is non-blocking for the submitter */ }
-      }
-
-      toast.success("تم إرسال الطلب بنجاح");
-      closeDialog();
-    } catch (err) { notifyError(err, "تعذر إرسال الطلب"); }
-    finally { setSubmitting(false); }
-  }
-
-  function renderField(f: FormField) {
-    const val = values[f.id] ?? "";
-    const set = (v: string) => setValues((s) => ({ ...s, [f.id]: v }));
-    const opts = parseOptions(f.options);
-    const selectClass = "w-full h-9 bg-secondary border border-border px-3 text-sm text-foreground";
-
-    if (f.fieldType === "TextArea") {
-      return <textarea value={val} onChange={(e) => set(e.target.value)} placeholder={f.placeholder ?? ""} className="w-full bg-secondary border border-border px-3 py-2 text-sm text-foreground min-h-[80px]" />;
+      if (approve) await approveRequest(id); else await rejectRequest(id, "");
+      toast.success(approve ? "تمت الموافقة" : "تم الرفض");
+      setDetail(null);
+      await refresh();
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "تعذر تنفيذ الإجراء");
     }
-    if (f.fieldType === "Boolean") {
-      return <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={val === "true"} onChange={(e) => set(e.target.checked ? "true" : "false")} /> نعم</label>;
-    }
-    if (f.fieldType === "Dropdown") {
-      return (
-        <select value={val} onChange={(e) => set(e.target.value)} className={selectClass}>
-          <option value="">— اختر —</option>
-          {opts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-      );
-    }
-    return <Input type={inputType(f.fieldType)} value={val} onChange={(e) => set(e.target.value)} placeholder={f.placeholder ?? ""} className="bg-secondary border-border" />;
-  }
+  };
 
-  const activeMeta = active ? readMeta(active) : null;
+  const doCancel = async (id: string) => {
+    try { await cancelRequest(id); toast.success("تم الإلغاء"); setDetail(null); await refresh(); }
+    catch (e) { toast.error(e instanceof ApiError ? e.message : "تعذر الإلغاء"); }
+  };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-bold">الطلبات</h1>
-        <p className="text-sm text-muted-foreground mt-1">اختر نوع الطلب لتقديمه</p>
+        <h1 className="text-2xl font-bold">مركز الطلبات</h1>
+        <p className="mt-1 text-sm text-muted-foreground">كل طلب ظاهر هنا قابل للاستخدام فوراً</p>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex flex-wrap items-center gap-1 border-b border-border">
+        <TabBtn active={tab === "submit"} onClick={() => setTab("submit")} icon={Send} label="تقديم طلب" />
+        <TabBtn active={tab === "mine"} onClick={() => setTab("mine")} icon={FileCheck} label={`طلباتي (${mine.length})`} />
+        <TabBtn active={tab === "inbox"} onClick={() => setTab("inbox")} icon={Inbox} label={`الموافقات (${inbox.length})`} />
       </div>
 
       {loading ? (
-        <div className="py-16 text-center text-sm text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin inline" /> جاري التحميل...</div>
-      ) : types.length === 0 ? (
-        <div className="border border-border bg-card p-12 flex flex-col items-center justify-center text-center">
-          <Inbox className="h-12 w-12 text-muted-foreground mb-4" />
-          <h2 className="text-lg font-semibold mb-2">لا توجد أنواع طلبات</h2>
-          <p className="text-sm text-muted-foreground">يقوم المسؤول بتعريف أنواع الطلبات من الإعدادات → إعدادات الطلبات</p>
+        <div className="flex h-64 items-center justify-center text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin" /></div>
+      ) : tab === "submit" ? (
+        <div className="space-y-6">
+          <Catalog title="الطلبات النظامية" subtitle="جاهزة وتعمل مباشرة" items={system} onPick={openType} />
+          {dynamic.length > 0 && <Catalog title="طلبات مخصصة" subtitle="أنشأتها المنشأة" items={dynamic} onPick={openType} />}
+          {types.length === 0 && (
+            <div className="border border-dashed border-border py-16 text-center text-muted-foreground">
+              لا توجد أنواع طلبات بعد — اطلب من المسؤول تفعيل الطلبات النظامية.
+            </div>
+          )}
         </div>
+      ) : tab === "mine" ? (
+        <RequestList items={mine} emptyText="لم تقدّم أي طلبات بعد" onOpen={setDetail} />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {types.map((t) => {
-            const Icon = requestIcon(t.icon);
-            const color = t.color ?? "#3b82f6";
-            const cat = catName(readMeta(t).categoryId);
-            return (
-              <button key={t.id} onClick={() => openType(t)} className="group text-right border border-border bg-card p-5 hover:border-primary/50 hover:bg-card/70 transition-colors">
-                <div className="flex items-start justify-between">
-                  <span className="flex h-10 w-10 items-center justify-center shrink-0" style={{ backgroundColor: `${color}1a`, color }}><Icon className="h-5 w-5" /></span>
-                  {cat && <Badge variant="outline" className="text-[10px] text-muted-foreground border-border">{cat}</Badge>}
-                </div>
-                <h2 className="text-base font-bold mt-4">{lookupLabel(t)}</h2>
-                {t.description && <p className="text-xs text-muted-foreground mt-1 leading-relaxed line-clamp-2">{t.description}</p>}
-              </button>
-            );
-          })}
-        </div>
+        <RequestList items={inbox} emptyText="لا توجد طلبات بانتظار موافقتك" onOpen={setDetail} />
       )}
 
-      <Dialog open={!!active} onOpenChange={(o) => { if (!o) closeDialog(); }}>
-        <DialogContent className="sm:max-w-xl">
-          <DialogHeader>
-            <DialogTitle>{active ? lookupLabel(active) : ""}</DialogTitle>
-            {active?.description && <DialogDescription>{active.description}</DialogDescription>}
-          </DialogHeader>
+      {/* Submit modal */}
+      {(activeType || loadingType) && (
+        <Modal onClose={() => setActiveType(null)} title={activeType?.nameAr ?? "..."}>
+          {loadingType || !activeType ? (
+            <div className="flex h-32 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin" /></div>
+          ) : (
+            <RequestForm type={activeType} onCancel={() => setActiveType(null)} onSubmitted={() => { setActiveType(null); setTab("mine"); refresh(); }} />
+          )}
+        </Modal>
+      )}
 
-          <div className="space-y-4 py-2 max-h-[65vh] overflow-y-auto pl-1">
-            {loadingForm ? (
-              <div className="py-8 text-center text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin inline" /> جاري تحميل النموذج...</div>
-            ) : !activeMeta?.formDefinitionId ? (
-              <p className="text-sm text-muted-foreground py-4">لا يوجد نموذج مرتبط بهذا الطلب بعد. تواصل مع المسؤول لإكمال إعداده.</p>
-            ) : formDef ? (
-              formDef.fields.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-4">النموذج لا يحتوي على حقول.</p>
-              ) : (
-                formDef.fields.map((f) => (
-                  <div key={f.id} className="space-y-2">
-                    <Label className="text-xs font-bold uppercase tracking-wider">
-                      {f.nameAr}{f.isRequired && <span className="text-destructive"> *</span>}
-                    </Label>
-                    {renderField(f)}
-                  </div>
-                ))
-              )
-            ) : null}
+      {/* Detail drawer */}
+      {detail && (
+        <DetailDrawer
+          instance={detail}
+          onClose={() => setDetail(null)}
+          onApprove={tab === "inbox" ? () => decide(detail.id, true) : undefined}
+          onReject={tab === "inbox" ? () => decide(detail.id, false) : undefined}
+          onCancel={tab === "mine" && ["Submitted", "InProgress"].includes(detail.status) ? () => doCancel(detail.id) : undefined}
+        />
+      )}
+    </div>
+  );
+}
+
+function TabBtn({ active, onClick, icon: Icon, label }: { active: boolean; onClick: () => void; icon: ElementType; label: string }) {
+  return (
+    <button onClick={onClick} className={`-mb-px flex items-center gap-1.5 border-b-2 px-4 py-2 text-sm ${active ? "border-primary font-bold" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
+      <Icon className="h-4 w-4" /> {label}
+    </button>
+  );
+}
+
+function Catalog({ title, subtitle, items, onPick }: { title: string; subtitle: string; items: RequestType[]; onPick: (t: RequestType) => void }) {
+  if (items.length === 0) return null;
+  return (
+    <div>
+      <div className="mb-3">
+        <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">{title}</h2>
+        <p className="text-xs text-muted-foreground">{subtitle}</p>
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {items.map((t) => {
+          const Icon = requestIcon(t.icon);
+          return (
+            <button key={t.id} onClick={() => onPick(t)} className="flex items-start gap-3 border border-border bg-card p-4 text-right transition-colors hover:border-primary/60">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center" style={{ background: `${t.color ?? "#FBBF24"}1a`, color: t.color ?? "#FBBF24" }}>
+                <Icon className="h-5 w-5" />
+              </span>
+              <span className="min-w-0">
+                <span className="block font-medium">{t.nameAr}</span>
+                <span className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                  {t.hasWorkflow && <span className="inline-flex items-center gap-0.5"><Clock className="h-3 w-3" /> موافقة</span>}
+                  {t.generatesDocument && <span className="inline-flex items-center gap-0.5"><FileText className="h-3 w-3" /> مستند</span>}
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function RequestList({ items, emptyText, onOpen }: { items: RequestInstance[]; emptyText: string; onOpen: (r: RequestInstance) => void }) {
+  if (items.length === 0) return <div className="border border-dashed border-border py-16 text-center text-muted-foreground">{emptyText}</div>;
+  return (
+    <div className="space-y-2">
+      {items.map((r) => (
+        <button key={r.id} onClick={() => onOpen(r)} className="flex w-full items-center justify-between gap-3 border border-border bg-card px-4 py-3 text-right hover:bg-muted/40">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="font-medium">{r.requestTypeNameAr}</span>
+              <span className="font-mono text-xs text-muted-foreground">{r.requestNumber}</span>
+            </div>
+            <div className="mt-0.5 text-xs text-muted-foreground">
+              {new Date(r.submittedAt).toLocaleDateString("ar")} {r.daysCount ? `· ${r.daysCount} يوم` : ""}
+            </div>
+          </div>
+          <span className={`shrink-0 border px-2 py-1 text-xs ${requestStatusColor(r.status)}`}>{requestStatusLabel(r.status)}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Modal({ children, onClose, title }: { children: React.ReactNode; onClose: () => void; title: string }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="relative z-10 max-h-[85vh] w-full max-w-lg overflow-auto border border-border bg-card">
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <h3 className="font-bold">{title}</h3>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
+        </div>
+        <div className="p-5">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function DetailDrawer({ instance, onClose, onApprove, onReject, onCancel }: {
+  instance: RequestInstance; onClose: () => void; onApprove?: () => void; onReject?: () => void; onCancel?: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex justify-start">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative z-10 flex h-full w-full max-w-lg flex-col border-l border-border bg-background">
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <div>
+            <h3 className="font-bold">{instance.requestTypeNameAr}</h3>
+            <p className="font-mono text-xs text-muted-foreground">{instance.requestNumber}</p>
+          </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
+        </div>
+
+        <div className="flex-1 space-y-5 overflow-auto p-5">
+          <div className="flex items-center gap-2">
+            <span className={`border px-2 py-1 text-xs ${requestStatusColor(instance.status)}`}>{requestStatusLabel(instance.status)}</span>
+            {instance.generatedDocumentId && <span className="inline-flex items-center gap-1 border border-green-500/30 bg-green-500/10 px-2 py-1 text-xs text-green-400"><FileText className="h-3 w-3" /> تم إصدار المستند</span>}
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={closeDialog} disabled={submitting}>إلغاء</Button>
-            <Button onClick={submit} disabled={submitting || !activeMeta?.formDefinitionId} className="font-bold gap-2">
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              {submitting ? "جاري الإرسال..." : "إرسال الطلب"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          {(instance.startDate || instance.daysCount) && (
+            <div className="text-sm text-muted-foreground">
+              {instance.startDate && <>من {new Date(instance.startDate).toLocaleDateString("ar")} </>}
+              {instance.endDate && <>إلى {new Date(instance.endDate).toLocaleDateString("ar")} </>}
+              {instance.daysCount && <>· {instance.daysCount} يوم</>}
+            </div>
+          )}
+
+          {instance.approvals.length > 0 && (
+            <div>
+              <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">سلسلة الموافقات</p>
+              <div className="space-y-2">
+                {instance.approvals.map((a) => (
+                  <div key={a.stepOrder} className="flex items-center justify-between border border-border px-3 py-2 text-sm">
+                    <span>{a.stepOrder}. {a.stepNameAr}</span>
+                    <span className={`border px-2 py-0.5 text-xs ${requestStatusColor(a.status)}`}>{requestStatusLabel(a.status)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">المسار الزمني</p>
+            <div className="space-y-2">
+              {instance.history.map((h, i) => (
+                <div key={i} className="flex items-start gap-2 text-sm">
+                  <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" />
+                  <span>{h.noteAr ?? requestStatusLabel(h.toStatus)} <span className="text-xs text-muted-foreground">· {new Date(h.at).toLocaleString("ar")}</span></span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {(onApprove || onReject || onCancel) && (
+          <div className="flex items-center gap-2 border-t border-border p-4">
+            {onApprove && <button onClick={onApprove} className="inline-flex h-10 flex-1 items-center justify-center gap-2 bg-primary text-sm font-bold uppercase tracking-wider text-primary-foreground hover:bg-primary/80"><Check className="h-4 w-4" /> موافقة</button>}
+            {onReject && <button onClick={onReject} className="inline-flex h-10 flex-1 items-center justify-center gap-2 border border-destructive/50 text-sm text-destructive hover:bg-destructive/10"><X className="h-4 w-4" /> رفض</button>}
+            {onCancel && <button onClick={onCancel} className="inline-flex h-10 flex-1 items-center justify-center gap-2 border border-border text-sm hover:bg-muted">إلغاء الطلب</button>}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

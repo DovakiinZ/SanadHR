@@ -45,6 +45,12 @@ public static class DependencyInjection
         services.AddScoped<HR.Modules.Platform.Services.Dashboards.IDashboardSeeder,
             HR.Modules.Platform.Services.Dashboards.DashboardSeeder>();
 
+        // Request Center engine + system-request seeder
+        services.AddScoped<HR.Modules.Platform.Services.Requests.IRequestEngine,
+            HR.Modules.Platform.Services.Requests.RequestEngine>();
+        services.AddScoped<HR.Modules.Platform.Services.Requests.IRequestSeeder,
+            HR.Modules.Platform.Services.Requests.RequestSeeder>();
+
         return services;
     }
 }

@@ -183,6 +183,19 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<CalendarSetting> CalendarSettings => Set<CalendarSetting>();
     public DbSet<FiscalPeriod> FiscalPeriods => Set<FiscalPeriod>();
 
+    // Request Center Engine
+    public DbSet<HR.Domain.Engines.Requests.RequestType> RequestTypes => Set<HR.Domain.Engines.Requests.RequestType>();
+    public DbSet<HR.Domain.Engines.Requests.RequestImpactMapping> RequestImpactMappings => Set<HR.Domain.Engines.Requests.RequestImpactMapping>();
+    public DbSet<HR.Domain.Engines.Requests.RequestPermission> RequestPermissions => Set<HR.Domain.Engines.Requests.RequestPermission>();
+    public DbSet<HR.Domain.Engines.Requests.RequestInstance> RequestInstances => Set<HR.Domain.Engines.Requests.RequestInstance>();
+    public DbSet<HR.Domain.Engines.Requests.RequestApproval> RequestApprovals => Set<HR.Domain.Engines.Requests.RequestApproval>();
+    public DbSet<HR.Domain.Engines.Requests.RequestStatusHistory> RequestStatusHistories => Set<HR.Domain.Engines.Requests.RequestStatusHistory>();
+
+    // Leave / Attendance / Notifications (request impact targets)
+    public DbSet<HR.Domain.Engines.Leave.LeaveBalance> LeaveBalances => Set<HR.Domain.Engines.Leave.LeaveBalance>();
+    public DbSet<HR.Domain.Engines.Attendance.AttendanceRecord> AttendanceRecords => Set<HR.Domain.Engines.Attendance.AttendanceRecord>();
+    public DbSet<HR.Domain.Engines.Notifications.Notification> Notifications => Set<HR.Domain.Engines.Notifications.Notification>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
