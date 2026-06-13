@@ -173,6 +173,31 @@ public class RequestsController : BaseApiController
         return OkResponse(list);
     }
 
+    /// <summary>All requests submitted by a specific employee (for the employee profile).</summary>
+    [HttpGet("by-employee/{employeeId:guid}")]
+    public async Task<ActionResult<ApiResponse<List<RequestInstanceDto>>>> ByEmployee(Guid employeeId, CancellationToken ct)
+    {
+        var list = await _db.RequestInstances.Where(r => r.EmployeeId == employeeId)
+            .OrderByDescending(r => r.SubmittedAt).Select(ProjectInstance).ToListAsync(ct);
+        return OkResponse(list);
+    }
+
+    /// <summary>An employee's activity timeline (no extra permission — used by the profile).</summary>
+    [HttpGet("by-employee/{employeeId:guid}/timeline")]
+    public async Task<ActionResult<ApiResponse<List<EmployeeTimelineDto>>>> EmployeeTimeline(Guid employeeId, CancellationToken ct)
+    {
+        var events = await _db.TimelineEvents
+            .Where(t => t.EntityType == "Employee" && t.EntityId == employeeId)
+            .OrderByDescending(t => t.OccurredAt).Take(50)
+            .Select(t => new EmployeeTimelineDto
+            {
+                Id = t.Id, Category = t.Category, Action = t.Action,
+                DescriptionAr = t.DescriptionAr, DescriptionEn = t.DescriptionEn,
+                ActorName = t.ActorName, OccurredAt = t.OccurredAt,
+            }).ToListAsync(ct);
+        return OkResponse(events);
+    }
+
     [HttpGet("inbox")]
     public async Task<ActionResult<ApiResponse<List<RequestInstanceDto>>>> Inbox(CancellationToken ct)
     {
@@ -336,4 +361,15 @@ public sealed class RequestHistoryDto
     public string? NoteAr { get; set; }
     public string? NoteEn { get; set; }
     public DateTime At { get; set; }
+}
+
+public sealed class EmployeeTimelineDto
+{
+    public Guid Id { get; set; }
+    public string Category { get; set; } = null!;
+    public string Action { get; set; } = null!;
+    public string? DescriptionAr { get; set; }
+    public string? DescriptionEn { get; set; }
+    public string? ActorName { get; set; }
+    public DateTime OccurredAt { get; set; }
 }
