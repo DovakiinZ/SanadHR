@@ -57,9 +57,17 @@ public static class DependencyInjection
         services.AddScoped<HR.Modules.Platform.Services.Requests.IRequestSeeder,
             HR.Modules.Platform.Services.Requests.RequestSeeder>();
 
-        // Official document rendering (QuestPDF)
+        // Official document rendering (QuestPDF) + token resolution + mapping-driven generation
+        services.AddScoped<HR.Modules.Platform.Services.Documents.IDocumentTokenResolver,
+            HR.Modules.Platform.Services.Documents.DocumentTokenResolver>();
         services.AddScoped<HR.Modules.Platform.Services.Documents.IDocumentRenderer,
             HR.Modules.Platform.Services.Documents.DocumentRenderer>();
+        services.AddScoped<HR.Modules.Platform.Services.Documents.IDocumentGenerationService,
+            HR.Modules.Platform.Services.Documents.DocumentGenerationService>();
+        services.AddScoped<HR.Modules.Platform.Services.Documents.IPageTemplateSeeder,
+            HR.Modules.Platform.Services.Documents.PageTemplateSeeder>();
+        services.AddScoped<HR.Modules.Platform.Services.Documents.IDocumentLibrarySeeder,
+            HR.Modules.Platform.Services.Documents.DocumentLibrarySeeder>();
 
         return services;
     }

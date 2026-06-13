@@ -1,12 +1,24 @@
 import Link from "next/link";
-import { Building2, Database, ChevronLeft, Inbox, Wallet, CalendarDays, Landmark, FileText } from "lucide-react";
+import { Building2, Database, ChevronLeft, Inbox, Wallet, CalendarDays, Landmark, FileText, LayoutTemplate, Stamp } from "lucide-react";
 
 const categories = [
   {
     href: "/settings/document-templates",
     title: "قوالب المستندات",
-    description: "صمّم المستندات الرسمية بالنصوص والرموز ({{Employee.FullName}}…) مع معاينة مباشرة — بدون مبرمجين",
+    description: "مصمّم مرئي بالسحب والإفلات لبناء المستندات الرسمية بالعناصر والرموز — بدون أي معرفة برمجية",
     icon: FileText,
+  },
+  {
+    href: "/settings/page-templates",
+    title: "قوالب الصفحات",
+    description: "الترويسة والتذييل والهوامش والعلامة المائية وموضع الشعار/الختم — تُورّثها قوالب المستندات",
+    icon: LayoutTemplate,
+  },
+  {
+    href: "/settings/document-branding",
+    title: "هوية المستندات",
+    description: "الشعار، الختم الرسمي، توقيع الموارد البشرية والرئيس التنفيذي وبيانات الشركة — تُحقن في كل مستند",
+    icon: Stamp,
   },
   {
     href: "/settings/company",

@@ -15,13 +15,15 @@ public record CreateDocumentTemplateCommand : IRequest<DocumentTemplateDto>
     public string NameEn { get; init; } = null!;
     public string NameAr { get; init; } = null!;
     public string? Description { get; init; }
-    public string Module { get; init; } = null!;
+    public string Module { get; init; } = "Requests";
     public DocumentOutputFormat OutputFormat { get; init; }
-    public string BodyTemplate { get; init; } = null!;
+    public string? LayoutJson { get; init; }
+    public string? BodyTemplate { get; init; }
     public string? HeaderTemplate { get; init; }
     public string? FooterTemplate { get; init; }
     public string? StyleSheet { get; init; }
     public bool UseBranding { get; init; } = true;
+    public Guid? PageTemplateId { get; init; }
     public string? PageSettings { get; init; }
 }
 
@@ -31,16 +33,19 @@ public record UpdateDocumentTemplateCommand : IRequest<DocumentTemplateDto>
     public string NameEn { get; init; } = null!;
     public string NameAr { get; init; } = null!;
     public string? Description { get; init; }
-    public string BodyTemplate { get; init; } = null!;
+    public string? LayoutJson { get; init; }
+    public string? BodyTemplate { get; init; }
     public string? HeaderTemplate { get; init; }
     public string? FooterTemplate { get; init; }
     public string? StyleSheet { get; init; }
     public bool UseBranding { get; init; }
+    public Guid? PageTemplateId { get; init; }
     public string? PageSettings { get; init; }
 }
 
 public record DeleteDocumentTemplateCommand(Guid Id) : IRequest;
 public record PublishDocumentTemplateCommand(Guid Id) : IRequest<DocumentTemplateDto>;
+public record DuplicateDocumentTemplateCommand(Guid Id) : IRequest<DocumentTemplateDto>;
 
 public record GenerateDocumentCommand : IRequest<GeneratedDocumentDto>
 {
@@ -76,7 +81,7 @@ public class CreateDocumentTemplateCommandHandler : IRequestHandler<CreateDocume
     public CreateDocumentTemplateCommandHandler(ApplicationDbContext context, IMapper mapper) { _context = context; _mapper = mapper; }
     public async Task<DocumentTemplateDto> Handle(CreateDocumentTemplateCommand request, CancellationToken ct)
     {
-        var entity = new DocumentTemplate { Code = request.Code, NameEn = request.NameEn, NameAr = request.NameAr, Description = request.Description, Module = request.Module, OutputFormat = request.OutputFormat, BodyTemplate = request.BodyTemplate, HeaderTemplate = request.HeaderTemplate, FooterTemplate = request.FooterTemplate, StyleSheet = request.StyleSheet, UseBranding = request.UseBranding, PageSettings = request.PageSettings };
+        var entity = new DocumentTemplate { Code = request.Code, NameEn = request.NameEn, NameAr = request.NameAr, Description = request.Description, Module = request.Module, OutputFormat = request.OutputFormat, LayoutJson = request.LayoutJson, BodyTemplate = request.BodyTemplate, HeaderTemplate = request.HeaderTemplate, FooterTemplate = request.FooterTemplate, StyleSheet = request.StyleSheet, UseBranding = request.UseBranding, PageTemplateId = request.PageTemplateId, PageSettings = request.PageSettings };
         _context.Set<DocumentTemplate>().Add(entity); await _context.SaveChangesAsync(ct);
         return _mapper.Map<DocumentTemplateDto>(entity);
     }
@@ -89,9 +94,9 @@ public class UpdateDocumentTemplateCommandHandler : IRequestHandler<UpdateDocume
     public async Task<DocumentTemplateDto> Handle(UpdateDocumentTemplateCommand request, CancellationToken ct)
     {
         var entity = await _context.Set<DocumentTemplate>().FindAsync(new object[] { request.Id }, ct) ?? throw new NotFoundException("DocumentTemplate", request.Id);
-        // Save version before update
-        _context.Set<DocumentTemplateVersion>().Add(new DocumentTemplateVersion { DocumentTemplateId = entity.Id, VersionNumber = entity.Version, BodyTemplate = entity.BodyTemplate, HeaderTemplate = entity.HeaderTemplate, FooterTemplate = entity.FooterTemplate, CreatedAt = DateTime.UtcNow });
-        entity.NameEn = request.NameEn; entity.NameAr = request.NameAr; entity.Description = request.Description; entity.BodyTemplate = request.BodyTemplate; entity.HeaderTemplate = request.HeaderTemplate; entity.FooterTemplate = request.FooterTemplate; entity.StyleSheet = request.StyleSheet; entity.UseBranding = request.UseBranding; entity.PageSettings = request.PageSettings; entity.Version++;
+        // Save version before update (snapshot the layout, falling back to legacy HTML; column is required).
+        _context.Set<DocumentTemplateVersion>().Add(new DocumentTemplateVersion { DocumentTemplateId = entity.Id, VersionNumber = entity.Version, BodyTemplate = entity.LayoutJson ?? entity.BodyTemplate ?? "", HeaderTemplate = entity.HeaderTemplate, FooterTemplate = entity.FooterTemplate, CreatedAt = DateTime.UtcNow });
+        entity.NameEn = request.NameEn; entity.NameAr = request.NameAr; entity.Description = request.Description; entity.LayoutJson = request.LayoutJson; entity.BodyTemplate = request.BodyTemplate; entity.HeaderTemplate = request.HeaderTemplate; entity.FooterTemplate = request.FooterTemplate; entity.StyleSheet = request.StyleSheet; entity.UseBranding = request.UseBranding; entity.PageTemplateId = request.PageTemplateId; entity.PageSettings = request.PageSettings; entity.Version++;
         await _context.SaveChangesAsync(ct);
         return _mapper.Map<DocumentTemplateDto>(entity);
     }
@@ -104,7 +109,31 @@ public class DeleteDocumentTemplateCommandHandler : IRequestHandler<DeleteDocume
     public async Task Handle(DeleteDocumentTemplateCommand request, CancellationToken ct)
     {
         var entity = await _context.Set<DocumentTemplate>().FindAsync(new object[] { request.Id }, ct) ?? throw new NotFoundException("DocumentTemplate", request.Id);
+        if (entity.IsSystem) throw new HR.Application.Common.Exceptions.ValidationException(new[] { new FluentValidation.Results.ValidationFailure("template", "لا يمكن حذف قالب نظام — يمكنك نسخه وتعديل النسخة.") });
         entity.IsDeleted = true; entity.DeletedAt = DateTime.UtcNow; await _context.SaveChangesAsync(ct);
+    }
+}
+
+public class DuplicateDocumentTemplateCommandHandler : IRequestHandler<DuplicateDocumentTemplateCommand, DocumentTemplateDto>
+{
+    private readonly ApplicationDbContext _context; private readonly IMapper _mapper;
+    public DuplicateDocumentTemplateCommandHandler(ApplicationDbContext context, IMapper mapper) { _context = context; _mapper = mapper; }
+    public async Task<DocumentTemplateDto> Handle(DuplicateDocumentTemplateCommand request, CancellationToken ct)
+    {
+        var src = await _context.Set<DocumentTemplate>().FindAsync(new object[] { request.Id }, ct) ?? throw new NotFoundException("DocumentTemplate", request.Id);
+        var baseCode = $"{src.Code}_COPY";
+        var code = baseCode; var i = 1;
+        while (await _context.Set<DocumentTemplate>().AnyAsync(d => d.Code == code, ct)) code = $"{baseCode}{++i}";
+        var copy = new DocumentTemplate
+        {
+            Code = code, NameEn = src.NameEn + " (Copy)", NameAr = src.NameAr + " (نسخة)", Description = src.Description,
+            Module = src.Module, OutputFormat = src.OutputFormat, Status = DocumentTemplateStatus.Draft,
+            LayoutJson = src.LayoutJson, BodyTemplate = src.BodyTemplate, HeaderTemplate = src.HeaderTemplate, FooterTemplate = src.FooterTemplate,
+            StyleSheet = src.StyleSheet, UseBranding = src.UseBranding, PageTemplateId = src.PageTemplateId, PageSettings = src.PageSettings,
+            IsSystem = false, IsActive = true,
+        };
+        _context.Set<DocumentTemplate>().Add(copy); await _context.SaveChangesAsync(ct);
+        return _mapper.Map<DocumentTemplateDto>(copy);
     }
 }
 

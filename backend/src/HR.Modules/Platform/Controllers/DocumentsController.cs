@@ -54,6 +54,12 @@ public class DocumentsController : BaseApiController
     public async Task<ActionResult<ApiResponse<DocumentTemplateDto>>> PublishTemplate(Guid id, CancellationToken ct)
     { var result = await Mediator.Send(new PublishDocumentTemplateCommand(id), ct); return OkResponse(result); }
 
+    /// <summary>Clone a template (e.g. a locked system library template) into an editable draft copy.</summary>
+    [HttpPost("templates/{id:guid}/duplicate")]
+    [RequirePermission("Platform.Documents.Create")]
+    public async Task<ActionResult<ApiResponse<DocumentTemplateDto>>> DuplicateTemplate(Guid id, CancellationToken ct)
+    { var result = await Mediator.Send(new DuplicateDocumentTemplateCommand(id), ct); return CreatedResponse(result); }
+
     [HttpPost("templates/{id:guid}/tokens")]
     [RequirePermission("Platform.Documents.Edit")]
     public async Task<ActionResult<ApiResponse<DocumentTemplateTokenDto>>> AddToken(Guid id, [FromBody] AddDocumentTokenCommand command, CancellationToken ct)

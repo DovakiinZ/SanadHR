@@ -24,14 +24,16 @@ public sealed class RequestEngine : IRequestEngine
     private readonly IAuditEngine _audit;
     private readonly ILeaveService _leave;
     private readonly HR.Modules.Platform.Services.Notifications.INotificationService _notify;
+    private readonly HR.Modules.Platform.Services.Documents.IDocumentGenerationService _docGen;
 
     private const int SlaHours = 48;
     private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
 
     public RequestEngine(ApplicationDbContext db, ICurrentUserService user, ITimelineEngine timeline, IAuditEngine audit, ILeaveService leave,
-        HR.Modules.Platform.Services.Notifications.INotificationService notify)
+        HR.Modules.Platform.Services.Notifications.INotificationService notify,
+        HR.Modules.Platform.Services.Documents.IDocumentGenerationService docGen)
     {
-        _db = db; _user = user; _timeline = timeline; _audit = audit; _leave = leave; _notify = notify;
+        _db = db; _user = user; _timeline = timeline; _audit = audit; _leave = leave; _notify = notify; _docGen = docGen;
     }
 
     // ── Submit ────────────────────────────────────────────────────────────────
@@ -151,6 +153,14 @@ public sealed class RequestEngine : IRequestEngine
             await ApplyImpactsAsync(instance, type, employee, ct);
         }
 
+        // Trigger: Submitted (always). If there is no approval chain the request is final on submit.
+        await _docGen.GenerateForTriggerAsync(instance.Id, DocumentTriggerEvent.Submitted, ct);
+        if (chain.Count == 0)
+        {
+            await _docGen.GenerateForTriggerAsync(instance.Id, DocumentTriggerEvent.FinalApproval, ct);
+            await _docGen.GenerateForTriggerAsync(instance.Id, DocumentTriggerEvent.Completed, ct);
+        }
+
         await _db.SaveChangesAsync(ct);
         return instance;
     }
@@ -187,11 +197,17 @@ public sealed class RequestEngine : IRequestEngine
             await TransitionAsync(instance, RequestStatus.Rejected, comment, "تم رفض الطلب", "Request rejected", ct);
             await CloseWorkflowAsync(instance, WorkflowStatus.Rejected, ct);
             await NotifySubmitterAsync(instance, "تم رفض طلبك", "Your request was rejected", ct);
+            await _docGen.GenerateForTriggerAsync(instance.Id, DocumentTriggerEvent.Rejected, ct);
             await _db.SaveChangesAsync(ct);
             return instance;
         }
 
         step.Status = RequestApprovalStatus.Approved;
+
+        // Trigger: FirstApproval — fired the first time any approver approves (step 1).
+        if (step.StepOrder == 1)
+            await _docGen.GenerateForTriggerAsync(instance.Id, DocumentTriggerEvent.FirstApproval, ct);
+
         var next = instance.Approvals
             .Where(a => a.Status == RequestApprovalStatus.Pending)
             .OrderBy(a => a.StepOrder).FirstOrDefault();
@@ -213,6 +229,9 @@ public sealed class RequestEngine : IRequestEngine
         var employee = await _db.Employees.FirstAsync(e => e.Id == instance.EmployeeId, ct);
         await ApplyImpactsAsync(instance, instance.RequestType, employee, ct);
         await NotifySubmitterAsync(instance, "تمت الموافقة على طلبك", "Your request was approved", ct);
+        // Triggers: FinalApproval + Completed (last approver approved → request is final).
+        await _docGen.GenerateForTriggerAsync(instance.Id, DocumentTriggerEvent.FinalApproval, ct);
+        await _docGen.GenerateForTriggerAsync(instance.Id, DocumentTriggerEvent.Completed, ct);
         await _db.SaveChangesAsync(ct);
         return instance;
     }
@@ -305,23 +324,8 @@ public sealed class RequestEngine : IRequestEngine
             }
         }
 
-        if (impact.GeneratesDocument && type.PrintTemplateId is { } templateId)
-        {
-            var doc = new HR.Domain.Engines.Documents.GeneratedDocument
-            {
-                DocumentTemplateId = templateId,
-                EntityType = "RequestInstance",
-                EntityId = instance.Id,
-                Status = HR.Domain.Enums.DocumentGenerationStatus.Completed,
-                OutputFormat = HR.Domain.Enums.DocumentOutputFormat.Pdf,
-                FileName = $"{type.Code}-{instance.RequestNumber}.pdf",
-                TokenValues = JsonSerializer.Serialize(new { instance.RequestNumber, employee = $"{employee.FirstName} {employee.LastName}" }),
-                GeneratedAt = DateTime.UtcNow,
-                GeneratedById = _user.UserId,
-            };
-            _db.Set<HR.Domain.Engines.Documents.GeneratedDocument>().Add(doc);
-            instance.GeneratedDocumentId = doc.Id;
-        }
+        // Document generation is mapping-driven now (see DocumentGenerationService), fired by the
+        // lifecycle trigger points in Submit/Decide — not from the impact engine.
 
         if (impact.AffectsTimeline)
             await _timeline.PublishEvent("Requests", "Employee", employee.Id, "RequestApproved",

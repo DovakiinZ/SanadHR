@@ -30,3 +30,13 @@ public enum BrandingElementType
     Footer = 4,
     Watermark = 5
 }
+
+/// <summary>Lifecycle point at which a request type's mapped document template is generated.</summary>
+public enum DocumentTriggerEvent
+{
+    Submitted = 1,
+    FirstApproval = 2,
+    FinalApproval = 3,
+    Rejected = 4,
+    Completed = 5
+}

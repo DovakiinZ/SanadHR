@@ -8,6 +8,11 @@ public class CompanyProfile : TenantEntity
     public string NameAr { get; set; } = null!;
     public string? LogoUrl { get; set; }
     public string? StampUrl { get; set; }
+
+    // Document signatures (used by the document renderer's signature blocks / footer).
+    public string? HrSignatureUrl { get; set; }
+    public string? CeoSignatureUrl { get; set; }
+
     public string? CommercialRegistration { get; set; }
     public string? VatNumber { get; set; }
 

@@ -17,9 +17,16 @@ namespace HR.Modules.Platform.Services.Requests;
 public sealed class RequestSeeder : IRequestSeeder
 {
     private readonly ApplicationDbContext _db;
+    private readonly HR.Modules.Platform.Services.Documents.IPageTemplateSeeder _pageSeeder;
+    private readonly HR.Modules.Platform.Services.Documents.IDocumentLibrarySeeder _libSeeder;
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
-    public RequestSeeder(ApplicationDbContext db) => _db = db;
+    public RequestSeeder(ApplicationDbContext db,
+        HR.Modules.Platform.Services.Documents.IPageTemplateSeeder pageSeeder,
+        HR.Modules.Platform.Services.Documents.IDocumentLibrarySeeder libSeeder)
+    {
+        _db = db; _pageSeeder = pageSeeder; _libSeeder = libSeeder;
+    }
 
     public async Task<int> SeedSystemRequestsAsync(CancellationToken ct)
     {
@@ -33,9 +40,9 @@ public sealed class RequestSeeder : IRequestSeeder
         await EnsureExpenseCategoriesAsync(ct);
         await EnsureLoanTypesAsync(ct);
 
-        // 1) Print templates (official documents — full PDF rendering arrives with QuestPDF).
-        var tplLeave = await EnsureDocTemplate("DOC_LEAVE_APPROVAL", "Leave Approval", "موافقة إجازة", LeaveApprovalHtml, ct);
-        var tplSalaryCert = await EnsureDocTemplate("DOC_SALARY_CERTIFICATE", "Salary Certificate", "شهادة تعريف بالراتب", SalaryCertificateHtml, ct);
+        // 1) Page-template presets (chrome) + ready-to-use document library (block model).
+        var defaultPage = await _pageSeeder.SeedAsync(ct);
+        await _libSeeder.SeedAsync(defaultPage, ct);
 
         // 2) Workflows (separate entities — requests reference them by id).
         var wfManager = await EnsureWorkflow("WF_REQ_MANAGER", "Manager Approval", "موافقة المدير",
@@ -52,9 +59,9 @@ public sealed class RequestSeeder : IRequestSeeder
         // 3) System requests, each fully provisioned. The sub-type is a FIELD (object ref),
         //    not a separate request — one Leave Request, leave type selected inside.
         int created = 0;
-        created += await EnsureRequest("LEAVE_REQUEST", "طلب إجازة", "Leave Request", catTimeOff, null, wfManager, tplLeave,
+        created += await EnsureRequest("LEAVE_REQUEST", "طلب إجازة", "Leave Request", catTimeOff, null, wfManager, null,
             LeaveRequestForm(), Impact(leave: true, attendance: true, document: true), "CalendarDays", "#34D399", ct);
-        created += await EnsureRequest("SALARY_CERTIFICATE", "شهادة راتب", "Salary Certificate", catLetters, null, wfHr, tplSalaryCert,
+        created += await EnsureRequest("SALARY_CERTIFICATE", "شهادة راتب", "Salary Certificate", catLetters, null, wfHr, null,
             SalaryCertificateForm(), Impact(document: true), "FileText", "#60A5FA", ct);
         created += await EnsureRequest("SALARY_ADVANCE", "سلفة راتب", "Salary Advance", catFinance, null, wfMgrFinPay, null,
             AmountForm("FORM_SALARY_ADVANCE", "نموذج سلفة راتب", "Salary Advance Form"),
@@ -72,9 +79,62 @@ public sealed class RequestSeeder : IRequestSeeder
 
         // Retire the old per-leave-type requests (superseded by the single Leave Request).
         await DeactivateRequestsAsync(new[] { "ANNUAL_LEAVE", "SICK_LEAVE", "EMERGENCY_LEAVE" }, ct);
+        await _db.SaveChangesAsync(ct);
 
+        // 4) Default request → template mappings (FinalApproval). System mappings can't be deleted.
+        await EnsureMapping("LEAVE_REQUEST", "DOC_LEAVE_APPROVAL", DocumentTriggerEvent.FinalApproval, ct);
+        await EnsureMapping("SALARY_CERTIFICATE", "DOC_SALARY_CERTIFICATE", DocumentTriggerEvent.FinalApproval, ct);
+        await EnsureMapping("LOAN_REQUEST", "DOC_LOAN_APPROVAL", DocumentTriggerEvent.FinalApproval, ct);
+        await EnsureMapping("BUSINESS_TRIP", "DOC_MISSION_LETTER", DocumentTriggerEvent.FinalApproval, ct);
+        await BackfillLegacyMappingsAsync(ct);
         await _db.SaveChangesAsync(ct);
         return created;
+    }
+
+    /// <summary>Idempotently bind a request type to a library template for a trigger, keeping the
+    /// legacy PrintTemplateId + GeneratesDocument flag in sync for FinalApproval defaults.</summary>
+    private async Task EnsureMapping(string requestCode, string templateCode, DocumentTriggerEvent trigger, CancellationToken ct)
+    {
+        var typeId = await _db.RequestTypes.Where(t => t.Code == requestCode).Select(t => (Guid?)t.Id).FirstOrDefaultAsync(ct);
+        var tplId = await _db.DocumentTemplates.Where(d => d.Code == templateCode).Select(d => (Guid?)d.Id).FirstOrDefaultAsync(ct);
+        if (typeId is null || tplId is null) return;
+
+        var exists = await _db.RequestTemplateMappings.AnyAsync(
+            m => m.RequestTypeId == typeId && m.DocumentTemplateId == tplId && m.TriggerEvent == trigger, ct);
+        if (!exists)
+            _db.RequestTemplateMappings.Add(new RequestTemplateMapping
+            {
+                RequestTypeId = typeId.Value, DocumentTemplateId = tplId.Value, TriggerEvent = trigger, IsSystem = true,
+            });
+
+        if (trigger == DocumentTriggerEvent.FinalApproval)
+        {
+            var type = await _db.RequestTypes.Include(t => t.ImpactMapping).FirstAsync(t => t.Id == typeId, ct);
+            type.PrintTemplateId = tplId;
+            type.ImpactMapping ??= new RequestImpactMapping { RequestTypeId = type.Id };
+            type.ImpactMapping.GeneratesDocument = true;
+        }
+    }
+
+    /// <summary>For any request type that already had a legacy PrintTemplateId but no FinalApproval
+    /// mapping (older tenants), create the system mapping so generation keeps working.</summary>
+    private async Task BackfillLegacyMappingsAsync(CancellationToken ct)
+    {
+        var legacy = await _db.RequestTypes
+            .Where(t => t.PrintTemplateId != null)
+            .Select(t => new { t.Id, TemplateId = t.PrintTemplateId!.Value })
+            .ToListAsync(ct);
+        foreach (var l in legacy)
+        {
+            var has = await _db.RequestTemplateMappings.AnyAsync(
+                m => m.RequestTypeId == l.Id && m.TriggerEvent == DocumentTriggerEvent.FinalApproval, ct);
+            if (!has)
+                _db.RequestTemplateMappings.Add(new RequestTemplateMapping
+                {
+                    RequestTypeId = l.Id, DocumentTemplateId = l.TemplateId,
+                    TriggerEvent = DocumentTriggerEvent.FinalApproval, IsSystem = true,
+                });
+        }
     }
 
     private async Task DeactivateRequestsAsync(string[] codes, CancellationToken ct)
@@ -151,21 +211,6 @@ public sealed class RequestSeeder : IRequestSeeder
 
     /// <summary>Field options descriptor that tells the UI to load choices live from master data.</summary>
     private static string Lookup(string objectType) => $"{{\"lookup\":\"{objectType}\"}}";
-
-    private async Task<Guid> EnsureDocTemplate(string code, string en, string ar, string html, CancellationToken ct)
-    {
-        var existing = await _db.DocumentTemplates.FirstOrDefaultAsync(d => d.Code == code, ct);
-        if (existing is not null) return existing.Id;
-        var tpl = new DocumentTemplate
-        {
-            Code = code, NameEn = en, NameAr = ar, Module = "Requests",
-            Status = DocumentTemplateStatus.Published, OutputFormat = DocumentOutputFormat.Pdf,
-            BodyTemplate = html, UseBranding = true, IsActive = true,
-        };
-        _db.DocumentTemplates.Add(tpl);
-        await _db.SaveChangesAsync(ct);
-        return tpl.Id;
-    }
 
     private static WorkflowStepConfig Step(ApproverType type, string ar, string en)
         => new() { ApproverType = (int)type, NameAr = ar, NameEn = en };
@@ -296,26 +341,4 @@ public sealed class RequestSeeder : IRequestSeeder
     private sealed record FormSpec(string Code, string NameAr, string NameEn, List<FieldSpec> Fields);
     private sealed record FieldSpec(string Code, string NameAr, string NameEn, FieldType Type, bool Required, string? Placeholder = null, string? Options = null);
     private sealed record ImpactSpec(bool Leave, bool Attendance, bool Payroll, bool Expenses, bool Loans, bool CreatesLoan, bool Finance, bool Document);
-
-    // ── Official document HTML (tokens resolved at generation; styled for print) ──
-
-    private const string LeaveApprovalHtml = @"
-<div style='font-family:sans-serif;direction:rtl'>
-  <h2 style='text-align:center'>موافقة على طلب إجازة</h2>
-  <p>الشركة: {{CompanyName}} — السجل التجاري: {{CRNumber}} — الرقم الضريبي: {{VATNumber}}</p>
-  <hr/>
-  <p>نفيد بأنه تمت الموافقة على طلب الإجازة المقدّم من الموظف <b>{{EmployeeName}}</b> (رقم {{EmployeeNumber}})،
-     القسم {{Department}}، نوع الإجازة {{LeaveType}} من {{StartDate}} إلى {{EndDate}}.</p>
-  <p>تاريخ الإصدار: {{GeneratedDate}}</p>
-</div>";
-
-    private const string SalaryCertificateHtml = @"
-<div style='font-family:sans-serif;direction:rtl'>
-  <h2 style='text-align:center'>شهادة تعريف بالراتب</h2>
-  <p>الشركة: {{CompanyName}} — السجل التجاري: {{CRNumber}} — الرقم الضريبي: {{VATNumber}}</p>
-  <hr/>
-  <p>تشهد {{CompanyName}} بأن الموظف <b>{{EmployeeName}}</b> (رقم {{EmployeeNumber}})،
-     يعمل لدينا بمسمى {{JobTitle}} في قسم {{Department}}.</p>
-  <p>تاريخ الإصدار: {{GeneratedDate}}</p>
-</div>";
 }

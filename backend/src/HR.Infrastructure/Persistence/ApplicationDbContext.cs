@@ -162,6 +162,7 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<GeneratedDocument> GeneratedDocuments => Set<GeneratedDocument>();
     public DbSet<CompanyBranding> CompanyBrandings => Set<CompanyBranding>();
     public DbSet<DocumentWorkflowLink> DocumentWorkflowLinks => Set<DocumentWorkflowLink>();
+    public DbSet<PageTemplate> PageTemplates => Set<PageTemplate>();
 
     // Organization Graph Engine
     public DbSet<OrgNode> OrgNodes => Set<OrgNode>();
@@ -190,6 +191,7 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<HR.Domain.Engines.Requests.RequestInstance> RequestInstances => Set<HR.Domain.Engines.Requests.RequestInstance>();
     public DbSet<HR.Domain.Engines.Requests.RequestApproval> RequestApprovals => Set<HR.Domain.Engines.Requests.RequestApproval>();
     public DbSet<HR.Domain.Engines.Requests.RequestStatusHistory> RequestStatusHistories => Set<HR.Domain.Engines.Requests.RequestStatusHistory>();
+    public DbSet<HR.Domain.Engines.Requests.RequestTemplateMapping> RequestTemplateMappings => Set<HR.Domain.Engines.Requests.RequestTemplateMapping>();
 
     // Leave / Attendance / Notifications (request impact targets)
     public DbSet<HR.Domain.Engines.Leave.LeaveBalance> LeaveBalances => Set<HR.Domain.Engines.Leave.LeaveBalance>();

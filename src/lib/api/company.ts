@@ -7,6 +7,8 @@ export interface CompanyProfile {
   nameAr: string;
   logoUrl?: string | null;
   stampUrl?: string | null;
+  hrSignatureUrl?: string | null;
+  ceoSignatureUrl?: string | null;
   commercialRegistration?: string | null;
   vatNumber?: string | null;
   website?: string | null;
