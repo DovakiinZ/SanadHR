@@ -1,5 +1,4 @@
 using System.Text.Json;
-using HR.Domain.Engines.MasterData;
 using HR.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using QRCoder;
@@ -9,17 +8,21 @@ using QuestPDF.Infrastructure;
 
 namespace HR.Modules.Platform.Services.Documents;
 
-/// <summary>Renders an official PDF for an approved request (logo, CR/VAT, employee +
-/// request details, approvals, QR, stamp) using QuestPDF — works on Linux, no native deps.</summary>
+/// <summary>Renders an official PDF for an approved request using QuestPDF — works on Linux, no
+/// native deps. New templates use the JSON block model (<c>LayoutJson</c>) composed with a
+/// PageTemplate's chrome (header/footer/margins/watermark); legacy HTML bodies still render.</summary>
 public interface IDocumentRenderer
 {
     Task<(byte[] pdf, string fileName)> RenderRequestPdfAsync(Guid requestInstanceId, CancellationToken ct);
+    Task<(byte[] pdf, string fileName)> RenderRequestPdfAsync(Guid requestInstanceId, Guid? templateId, CancellationToken ct);
 }
 
 public sealed class DocumentRenderer : IDocumentRenderer
 {
     private readonly ApplicationDbContext _db;
+    private readonly IDocumentTokenResolver _tokens;
     private const string FontFamily = "Thmanyah Sans";
+    private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
 
     static DocumentRenderer()
     {
@@ -34,9 +37,12 @@ public sealed class DocumentRenderer : IDocumentRenderer
         catch { /* fall back to system fonts */ }
     }
 
-    public DocumentRenderer(ApplicationDbContext db) => _db = db;
+    public DocumentRenderer(ApplicationDbContext db, IDocumentTokenResolver tokens) { _db = db; _tokens = tokens; }
 
-    public async Task<(byte[] pdf, string fileName)> RenderRequestPdfAsync(Guid requestInstanceId, CancellationToken ct)
+    public Task<(byte[] pdf, string fileName)> RenderRequestPdfAsync(Guid requestInstanceId, CancellationToken ct)
+        => RenderRequestPdfAsync(requestInstanceId, null, ct);
+
+    public async Task<(byte[] pdf, string fileName)> RenderRequestPdfAsync(Guid requestInstanceId, Guid? templateId, CancellationToken ct)
     {
         var instance = await _db.RequestInstances.Include(r => r.RequestType)
             .FirstOrDefaultAsync(r => r.Id == requestInstanceId, ct)
@@ -47,139 +53,142 @@ public sealed class DocumentRenderer : IDocumentRenderer
         var approvals = await _db.RequestApprovals.Where(a => a.RequestInstanceId == requestInstanceId)
             .OrderBy(a => a.StepOrder).ToListAsync(ct);
 
-        string? title = null, bodyTemplate = null;
-        if (instance.RequestType.PrintTemplateId is { } tplId)
-        {
-            var tpl = await _db.DocumentTemplates.Where(t => t.Id == tplId).Select(t => new { t.NameAr, t.BodyTemplate }).FirstOrDefaultAsync(ct);
-            title = tpl?.NameAr; bodyTemplate = tpl?.BodyTemplate;
-        }
-        title ??= instance.RequestType.NameAr;
+        // Pick the template: explicit → request type's print template (legacy) → none.
+        var tplId = templateId ?? instance.RequestType.PrintTemplateId;
+        HR.Domain.Engines.Documents.DocumentTemplate? tpl = null;
+        if (tplId is { } id)
+            tpl = await _db.DocumentTemplates.FirstOrDefaultAsync(t => t.Id == id, ct);
 
-        var department = employee?.DepartmentId is { } depId
-            ? await _db.Departments.Where(d => d.Id == depId).Select(d => d.NameAr).FirstOrDefaultAsync(ct) : null;
-        var jobTitle = employee?.JobTitleId is { } jtId
-            ? await _db.MasterDataItems.Where(m => m.Id == jtId).Select(m => m.NameAr).FirstOrDefaultAsync(ct) : null;
-        var leaveType = instance.LeaveTypeId is { } ltId
-            ? await _db.MasterDataItems.Where(m => m.Id == ltId).Select(m => m.NameAr).FirstOrDefaultAsync(ct) : null;
-        var managerName = employee?.ManagerId is { } mId
-            ? await _db.Employees.Where(e => e.Id == mId).Select(e => (e.FirstNameAr ?? e.FirstName) + " " + (e.LastNameAr ?? e.LastName)).FirstOrDefaultAsync(ct) : null;
+        var title = tpl?.NameAr ?? instance.RequestType.NameAr;
+
+        // Page template (chrome). Null → built-in defaults.
+        HR.Domain.Engines.Documents.PageTemplate? page = null;
+        if (tpl?.PageTemplateId is { } pid)
+            page = await _db.PageTemplates.FirstOrDefaultAsync(p => p.Id == pid, ct);
+
+        var header = ParseCfg(page?.HeaderConfig);
+        var footer = ParseCfg(page?.FooterConfig);
+        var margins = ParseCfg(page?.Margins);
+        var watermark = ParseCfg(page?.Watermark);
 
         var logo = await LoadImageAsync(company?.LogoUrl, ct);
         var stamp = await LoadImageAsync(company?.StampUrl, ct);
+        var hrSig = await LoadImageAsync(company?.HrSignatureUrl, ct);
+        var ceoSig = await LoadImageAsync(company?.CeoSignatureUrl, ct);
         var contact = ParseJson(company?.ContactInfo);
         var address = ParseJson(company?.NationalAddress);
 
-        var employeeName = employee is null ? "—" : $"{employee.FirstNameAr ?? employee.FirstName} {employee.LastNameAr ?? employee.LastName}".Trim();
+        var tokenValues = await _tokens.ResolveForRequestAsync(requestInstanceId, ct);
+        var employeeName = tokenValues.GetValueOrDefault("Employee.FullName", "—");
         var generatedDate = DateTime.UtcNow.ToString("yyyy-MM-dd");
         var qr = MakeQr($"{company?.NameAr} | {instance.RequestNumber} | {employeeName} | {generatedDate}");
 
+        // Body source: block model → legacy HTML → structured details.
+        List<Block>? blocks = null;
+        if (!string.IsNullOrWhiteSpace(tpl?.LayoutJson))
+        {
+            try { blocks = JsonSerializer.Deserialize<Layout>(tpl!.LayoutJson!, JsonOpts)?.Blocks; }
+            catch { blocks = null; }
+        }
+        var legacyHtml = blocks is null && !string.IsNullOrWhiteSpace(tpl?.BodyTemplate)
+            ? ParseHtmlBlocks(ResolveTokens(tpl!.BodyTemplate!, tokenValues)) : null;
+
+        // Pre-load any image blocks (QuestPDF rendering below is synchronous — no DB inside).
+        var blockImages = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
+        if (blocks is not null)
+            foreach (var b in blocks.Where(b => string.Equals(b.Type, "image", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(b.FileId)))
+                if (!blockImages.ContainsKey(b.FileId!) && await LoadImageAsync(b.FileId, ct) is { } bytes)
+                    blockImages[b.FileId!] = bytes;
+
         var details = new List<(string, string)>
         {
-            ("اسم الموظف", employeeName),
-            ("الرقم الوظيفي", employee?.EmployeeNumber ?? "—"),
-            ("الإدارة", department ?? "—"),
-            ("المسمى الوظيفي", jobTitle ?? "—"),
+            ("اسم الموظف", tokenValues.GetValueOrDefault("Employee.FullName", "—")),
+            ("الرقم الوظيفي", tokenValues.GetValueOrDefault("Employee.EmployeeNumber", "—")),
+            ("الإدارة", tokenValues.GetValueOrDefault("Employee.Department", "—")),
+            ("المسمى الوظيفي", tokenValues.GetValueOrDefault("Employee.JobTitle", "—")),
         };
-        if (leaveType is not null) details.Add(("نوع الإجازة", leaveType));
-        if (instance.StartDate is { } sd) details.Add(("من", sd.ToString("yyyy-MM-dd")));
-        if (instance.EndDate is { } ed) details.Add(("إلى", ed.ToString("yyyy-MM-dd")));
-        if (instance.DaysCount is { } dc) details.Add(("عدد الأيام", $"{dc}"));
+        if (!string.IsNullOrEmpty(tokenValues.GetValueOrDefault("Leave.Type"))) details.Add(("نوع الإجازة", tokenValues["Leave.Type"]));
+        if (!string.IsNullOrEmpty(tokenValues.GetValueOrDefault("Leave.StartDate"))) details.Add(("من", tokenValues["Leave.StartDate"]));
+        if (!string.IsNullOrEmpty(tokenValues.GetValueOrDefault("Leave.EndDate"))) details.Add(("إلى", tokenValues["Leave.EndDate"]));
+        if (!string.IsNullOrEmpty(tokenValues.GetValueOrDefault("Leave.Days"))) details.Add(("عدد الأيام", tokenValues["Leave.Days"]));
 
-        // Admin-authored template body: resolve tokens, render its HTML subset (else fall back to the details table).
-        var tokens = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        byte[] BuildPdf(bool useBody) => Document.Create(doc =>
         {
-            ["Employee.FullName"] = employeeName,
-            ["Employee.EmployeeNumber"] = employee?.EmployeeNumber ?? "",
-            ["Employee.Department"] = department ?? "",
-            ["Employee.JobTitle"] = jobTitle ?? "",
-            ["Employee.Manager"] = managerName ?? "",
-            ["Request.Number"] = instance.RequestNumber,
-            ["Request.CreatedDate"] = instance.SubmittedAt.ToString("yyyy-MM-dd"),
-            ["Request.LeaveType"] = leaveType ?? "",
-            ["Request.StartDate"] = instance.StartDate?.ToString("yyyy-MM-dd") ?? "",
-            ["Request.EndDate"] = instance.EndDate?.ToString("yyyy-MM-dd") ?? "",
-            ["Request.Days"] = instance.DaysCount?.ToString() ?? "",
-            ["Company.Name"] = company?.NameAr ?? "",
-            ["Company.CR"] = company?.CommercialRegistration ?? "",
-            ["Company.VAT"] = company?.VatNumber ?? "",
-            ["System.Today"] = generatedDate,
-            // Aliases for the originally-seeded template token names
-            ["EmployeeName"] = employeeName,
-            ["EmployeeNumber"] = employee?.EmployeeNumber ?? "",
-            ["Department"] = department ?? "",
-            ["JobTitle"] = jobTitle ?? "",
-            ["LeaveType"] = leaveType ?? "",
-            ["StartDate"] = instance.StartDate?.ToString("yyyy-MM-dd") ?? "",
-            ["EndDate"] = instance.EndDate?.ToString("yyyy-MM-dd") ?? "",
-            ["CompanyName"] = company?.NameAr ?? "",
-            ["CRNumber"] = company?.CommercialRegistration ?? "",
-            ["VATNumber"] = company?.VatNumber ?? "",
-            ["GeneratedDate"] = generatedDate,
-        };
-        var bodyBlocks = string.IsNullOrWhiteSpace(bodyTemplate) ? null : ParseHtmlBlocks(ResolveTokens(bodyTemplate, tokens));
-
-        byte[] BuildPdf(List<(string kind, string text)>? bb) => Document.Create(doc =>
-        {
-            doc.Page(page =>
+            doc.Page(p =>
             {
-                page.Size(PageSizes.A4);
-                page.Margin(36);
-                page.DefaultTextStyle(x => x.FontFamily(FontFamily).FontSize(11).DirectionFromRightToLeft());
+                p.Size(PageSizes.A4);
+                p.MarginTop(GetNum(margins, "top", 36));
+                p.MarginBottom(GetNum(margins, "bottom", 36));
+                p.MarginLeft(GetNum(margins, "left", 36));
+                p.MarginRight(GetNum(margins, "right", 36));
+                p.DefaultTextStyle(x => x.FontFamily(FontFamily).FontSize(11).DirectionFromRightToLeft());
 
-                // Header — company identity
-                page.Header().Column(col =>
+                // Watermark
+                var wmText = GetStr(watermark, "text");
+                if (!string.IsNullOrWhiteSpace(wmText))
+                    p.Background().AlignCenter().AlignMiddle().Text(wmText!).FontSize(60).FontColor(Colors.Grey.Lighten3);
+
+                // ── Header (page-template chrome) ──
+                if (GetBool(header, "showLogo", true) || GetBool(header, "showIdentity", true) || !string.IsNullOrWhiteSpace(GetStr(header, "customText")))
                 {
-                    col.Item().Row(row =>
+                    p.Header().Column(col =>
                     {
-                        row.RelativeItem().Column(c =>
+                        col.Item().Row(row =>
                         {
-                            c.Item().Text(company?.NameAr ?? "الشركة").FontSize(16).Bold();
-                            if (!string.IsNullOrWhiteSpace(company?.NameEn)) c.Item().Text(company!.NameEn).FontSize(10).FontColor(Colors.Grey.Medium);
-                            var line = string.Join("  •  ", new[]
+                            var placement = GetStr(header, "logoPlacement") ?? "Left";
+                            void Identity()
                             {
-                                company?.CommercialRegistration is { Length: > 0 } cr ? $"س.ت: {cr}" : null,
-                                company?.VatNumber is { Length: > 0 } vat ? $"ض.ق.م: {vat}" : null,
-                            }.Where(s => s is not null));
-                            if (line.Length > 0) c.Item().Text(line).FontSize(9).FontColor(Colors.Grey.Medium);
-                            var contactLine = string.Join("  •  ", new[]
-                            {
-                                company?.Phone ?? Str(contact, "phone"),
-                                company?.Email ?? Str(contact, "email"),
-                                company?.Website ?? Str(contact, "website"),
-                                string.Join(" ", new[] { company?.Address, company?.City, company?.Country }.Where(s => !string.IsNullOrWhiteSpace(s))) is { Length: > 0 } addr ? addr : Str(address, "city"),
-                            }.Where(s => !string.IsNullOrWhiteSpace(s)));
-                            if (contactLine.Length > 0) c.Item().Text(contactLine).FontSize(9).FontColor(Colors.Grey.Medium);
-                        });
-                        if (logo is not null) row.ConstantItem(90).AlignLeft().Height(60).Image(logo).FitArea();
-                    });
-                    col.Item().PaddingTop(8).LineHorizontal(1).LineColor(Colors.Grey.Lighten1);
-                });
+                                row.RelativeItem().Column(c =>
+                                {
+                                    if (GetBool(header, "showIdentity", true))
+                                    {
+                                        c.Item().Text(company?.NameAr ?? "الشركة").FontSize(16).Bold();
+                                        if (!string.IsNullOrWhiteSpace(company?.NameEn)) c.Item().Text(company!.NameEn).FontSize(10).FontColor(Colors.Grey.Medium);
+                                    }
+                                    if (GetBool(header, "showCrVat", true))
+                                    {
+                                        var line = string.Join("  •  ", new[]
+                                        {
+                                            company?.CommercialRegistration is { Length: > 0 } cr ? $"س.ت: {cr}" : null,
+                                            company?.VatNumber is { Length: > 0 } vat ? $"ض.ق.م: {vat}" : null,
+                                        }.Where(s => s is not null));
+                                        if (line.Length > 0) c.Item().Text(line).FontSize(9).FontColor(Colors.Grey.Medium);
+                                    }
+                                    if (GetBool(header, "showContact", true))
+                                    {
+                                        var contactLine = string.Join("  •  ", new[]
+                                        {
+                                            company?.Phone ?? Str(contact, "phone"),
+                                            company?.Email ?? Str(contact, "email"),
+                                            company?.Website ?? Str(contact, "website"),
+                                            string.Join(" ", new[] { company?.Address, company?.City, company?.Country }.Where(s => !string.IsNullOrWhiteSpace(s))) is { Length: > 0 } addr ? addr : Str(address, "city"),
+                                        }.Where(s => !string.IsNullOrWhiteSpace(s)));
+                                        if (contactLine.Length > 0) c.Item().Text(contactLine).FontSize(9).FontColor(Colors.Grey.Medium);
+                                    }
+                                    if (GetStr(header, "customText") is { Length: > 0 } htxt) c.Item().Text(htxt).FontSize(9).FontColor(Colors.Grey.Medium);
+                                });
+                            }
+                            void Logo() { if (logo is not null && GetBool(header, "showLogo", true)) row.ConstantItem(90).Height(60).Image(logo).FitArea(); }
 
-                page.Content().PaddingVertical(16).Column(col =>
+                            if (placement.Equals("Right", StringComparison.OrdinalIgnoreCase)) { Logo(); Identity(); }
+                            else { Identity(); Logo(); }
+                        });
+                        col.Item().PaddingTop(8).LineHorizontal(1).LineColor(Colors.Grey.Lighten1);
+                    });
+                }
+
+                // ── Content ──
+                p.Content().PaddingVertical(16).Column(col =>
                 {
                     col.Spacing(12);
                     col.Item().AlignCenter().Text(title).FontSize(15).Bold();
 
-                    if (bb is not null)
-                    {
-                        // Render the admin's template body (token-resolved HTML subset).
-                        foreach (var (kind, text) in bb)
-                        {
-                            if (string.IsNullOrWhiteSpace(text) && kind != "hr") continue;
-                            switch (kind)
-                            {
-                                case "h1": col.Item().Text(text).FontSize(14).Bold(); break;
-                                case "h2": col.Item().Text(text).FontSize(12).Bold(); break;
-                                case "h3": col.Item().Text(text).FontSize(11).Bold(); break;
-                                case "li": col.Item().Text($"•  {text}").FontSize(11); break;
-                                case "hr": col.Item().LineHorizontal(0.5f).LineColor(Colors.Grey.Lighten1); break;
-                                default: col.Item().Text(text).FontSize(11); break;
-                            }
-                        }
-                    }
+                    if (useBody && blocks is not null)
+                        RenderBlocks(col, blocks, tokenValues, qr, stamp, hrSig, ceoSig, blockImages);
+                    else if (useBody && legacyHtml is not null)
+                        RenderLegacy(col, legacyHtml);
                     else
                     {
-                        // Fallback: structured details table.
                         col.Item().Text($"رقم الطلب: {instance.RequestNumber}").FontSize(10).FontColor(Colors.Grey.Medium);
                         col.Item().Table(table =>
                         {
@@ -192,7 +201,6 @@ public sealed class DocumentRenderer : IDocumentRenderer
                         });
                     }
 
-                    // Approval block (always appended for official documents).
                     if (approvals.Count > 0)
                     {
                         col.Item().PaddingTop(6).Text("سلسلة الموافقات").Bold();
@@ -204,33 +212,154 @@ public sealed class DocumentRenderer : IDocumentRenderer
                     }
                 });
 
-                // Footer — QR, stamp, date
-                page.Footer().Column(col =>
+                // ── Footer (page-template chrome) ──
+                p.Footer().Column(col =>
                 {
                     col.Item().PaddingTop(6).LineHorizontal(1).LineColor(Colors.Grey.Lighten1);
                     col.Item().PaddingTop(6).Row(row =>
                     {
-                        row.ConstantItem(70).Height(70).Image(qr).FitArea();
-                        row.RelativeItem().AlignMiddle().Text($"تاريخ الإصدار: {generatedDate}").FontSize(9).FontColor(Colors.Grey.Medium);
-                        if (stamp is not null) row.ConstantItem(80).Height(70).AlignLeft().Image(stamp).FitArea();
+                        if (GetBool(footer, "showQr", true)) row.ConstantItem(70).Height(70).Image(qr).FitArea();
+                        var mid = GetStr(footer, "customText");
+                        if (GetBool(footer, "showGeneratedDate", true))
+                            row.RelativeItem().AlignMiddle().Text($"تاريخ الإصدار: {generatedDate}{(string.IsNullOrWhiteSpace(mid) ? "" : "  •  " + mid)}").FontSize(9).FontColor(Colors.Grey.Medium);
+                        else if (!string.IsNullOrWhiteSpace(mid))
+                            row.RelativeItem().AlignMiddle().Text(mid!).FontSize(9).FontColor(Colors.Grey.Medium);
+                        if (stamp is not null && GetBool(footer, "showStamp", true)) row.ConstantItem(80).Height(70).AlignLeft().Image(stamp).FitArea();
                     });
                 });
             });
         }).GeneratePdf();
 
-        // Render with the template body; if it can't lay out, fall back to the structured layout.
         byte[] pdf;
-        try { pdf = BuildPdf(bodyBlocks); }
+        try { pdf = BuildPdf(true); }
         catch (QuestPDF.Drawing.Exceptions.DocumentLayoutException ex)
         {
-            Console.Error.WriteLine($"[DocumentRenderer] template body layout failed, falling back: {ex.Message}");
-            pdf = BuildPdf(null);
+            Console.Error.WriteLine($"[DocumentRenderer] body layout failed, falling back: {ex.Message}");
+            pdf = BuildPdf(false);
         }
 
-        return (pdf, $"{instance.RequestType.Code}-{instance.RequestNumber}.pdf");
+        var fileName = $"{instance.RequestType.Code}-{instance.RequestNumber}.pdf";
+        return (pdf, fileName);
     }
 
-    // ── helpers ──
+    // ── Block model rendering ──
+
+    private static void RenderBlocks(QuestPDF.Fluent.ColumnDescriptor col, List<Block> blocks, IReadOnlyDictionary<string, string> tokens,
+        byte[] qr, byte[]? stamp, byte[]? hrSig, byte[]? ceoSig, IReadOnlyDictionary<string, byte[]> blockImages)
+    {
+        foreach (var b in blocks)
+        {
+            var kind = (b.Type ?? "text").ToLowerInvariant();
+            switch (kind)
+            {
+                case "title":
+                    Aligned(col, b.Align, "center").Text(ResolveTokens(b.Text ?? "", tokens)).FontSize(SizePt(b.Size, 15)).Bold();
+                    break;
+                case "text":
+                {
+                    var span = Aligned(col, b.Align, "right").Text(ResolveTokens(b.Text ?? "", tokens)).FontSize(SizePt(b.Size, 11));
+                    if (b.Bold) span.Bold();
+                    break;
+                }
+                case "token":
+                {
+                    var val = tokens.TryGetValue(StripBraces(b.Token), out var tv) ? tv : (b.Text ?? "");
+                    var span = Aligned(col, b.Align, "right").Text(val).FontSize(SizePt(b.Size, 11));
+                    if (b.Bold) span.Bold();
+                    break;
+                }
+                case "table":
+                    if (b.Rows is { Count: > 0 })
+                        col.Item().Table(table =>
+                        {
+                            table.ColumnsDefinition(c => { c.RelativeColumn(1); c.RelativeColumn(2); });
+                            foreach (var r in b.Rows)
+                            {
+                                table.Cell().Background(Colors.Grey.Lighten4).Padding(6).Text(ResolveTokens(r.Label ?? "", tokens)).Bold().FontSize(10);
+                                table.Cell().Padding(6).Text(ResolveTokens(r.Value ?? "", tokens)).FontSize(10);
+                            }
+                        });
+                    break;
+                case "image":
+                    if (b.FileId is { } fid && blockImages.TryGetValue(fid, out var img))
+                        Aligned(col, b.Align, "center").Width(b.Width ?? 160).Image(img).FitWidth();
+                    break;
+                case "qr":
+                    Aligned(col, b.Align, "center").Width(b.Width ?? 90).Image(qr).FitWidth();
+                    break;
+                case "signature":
+                    var sig = string.Equals(b.Role, "ceo", StringComparison.OrdinalIgnoreCase) ? ceoSig : hrSig;
+                    col.Item().PaddingTop(10).AlignCenter().Column(c =>
+                    {
+                        if (sig is not null) c.Item().Width(b.Width ?? 140).Image(sig).FitWidth();
+                        c.Item().Text(b.Label ?? (string.Equals(b.Role, "ceo", StringComparison.OrdinalIgnoreCase) ? "الرئيس التنفيذي" : "إدارة الموارد البشرية")).FontSize(10).Bold();
+                    });
+                    break;
+                case "stamp":
+                    if (stamp is not null) Aligned(col, b.Align, "left").Width(b.Width ?? 100).Image(stamp).FitWidth();
+                    break;
+                case "divider":
+                    col.Item().LineHorizontal(0.5f).LineColor(Colors.Grey.Lighten1);
+                    break;
+                case "spacer":
+                    col.Item().Height(b.Height ?? 16);
+                    break;
+                default:
+                    if (!string.IsNullOrWhiteSpace(b.Text)) col.Item().Text(ResolveTokens(b.Text, tokens)).FontSize(11);
+                    break;
+            }
+        }
+    }
+
+    private static IContainer Aligned(QuestPDF.Fluent.ColumnDescriptor col, string? align, string fallback)
+    {
+        var a = (align ?? fallback).ToLowerInvariant();
+        var item = col.Item();
+        return a switch { "center" => item.AlignCenter(), "left" => item.AlignLeft(), _ => item.AlignRight() };
+    }
+
+    private static void RenderLegacy(QuestPDF.Fluent.ColumnDescriptor col, List<(string kind, string text)> bb)
+    {
+        foreach (var (kind, text) in bb)
+        {
+            if (string.IsNullOrWhiteSpace(text) && kind != "hr") continue;
+            switch (kind)
+            {
+                case "h1": col.Item().Text(text).FontSize(14).Bold(); break;
+                case "h2": col.Item().Text(text).FontSize(12).Bold(); break;
+                case "h3": col.Item().Text(text).FontSize(11).Bold(); break;
+                case "li": col.Item().Text($"•  {text}").FontSize(11); break;
+                case "hr": col.Item().LineHorizontal(0.5f).LineColor(Colors.Grey.Lighten1); break;
+                default: col.Item().Text(text).FontSize(11); break;
+            }
+        }
+    }
+
+    private static float SizePt(string? size, float def) => (size ?? "").ToLowerInvariant() switch
+    {
+        "sm" => 9, "md" => 11, "lg" => 15, "xl" => 20, _ => def,
+    };
+
+    private static string StripBraces(string? token) => (token ?? "").Trim().TrimStart('{').TrimEnd('}').Trim();
+
+    // ── config helpers ──
+
+    private static Dictionary<string, JsonElement>? ParseCfg(string? json) => ParseJson(json);
+    private static bool GetBool(Dictionary<string, JsonElement>? d, string key, bool def)
+    {
+        if (d is not null && d.TryGetValue(key, out var v))
+        {
+            if (v.ValueKind == JsonValueKind.True) return true;
+            if (v.ValueKind == JsonValueKind.False) return false;
+        }
+        return def;
+    }
+    private static string? GetStr(Dictionary<string, JsonElement>? d, string key)
+        => d is not null && d.TryGetValue(key, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+    private static float GetNum(Dictionary<string, JsonElement>? d, string key, float def)
+        => d is not null && d.TryGetValue(key, out var v) && v.ValueKind == JsonValueKind.Number ? (float)v.GetDouble() : def;
+
+    // ── shared helpers ──
 
     private static byte[] MakeQr(string text)
     {
@@ -267,7 +396,7 @@ public sealed class DocumentRenderer : IDocumentRenderer
         => System.Text.RegularExpressions.Regex.Replace(template, @"\{\{\s*([\w.]+)\s*\}\}",
             m => tokens.TryGetValue(m.Groups[1].Value, out var v) ? v : m.Value);
 
-    /// <summary>Parse a token-resolved HTML body into a renderable block sequence (subset).</summary>
+    /// <summary>Parse a token-resolved HTML body into a renderable block sequence (legacy subset).</summary>
     public static List<(string kind, string text)> ParseHtmlBlocks(string html)
     {
         var s = html ?? "";
@@ -281,7 +410,7 @@ public sealed class DocumentRenderer : IDocumentRenderer
         s = Rep(s, @"<h3[^>]*>(.*?)</h3>", "\n@@H3@@$1\n");
         s = Rep(s, @"<li[^>]*>(.*?)</li>", "\n@@LI@@$1\n");
         s = Rep(s, @"</(p|div|tr)>", "\n");
-        s = System.Text.RegularExpressions.Regex.Replace(s, @"<[^>]+>", "", R);          // strip remaining tags
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"<[^>]+>", "", R);
         s = s.Replace("&nbsp;", " ").Replace("&amp;", "&").Replace("&lt;", "<").Replace("&gt;", ">").Replace("&quot;", "\"");
 
         var blocks = new List<(string, string)>();
@@ -298,4 +427,23 @@ public sealed class DocumentRenderer : IDocumentRenderer
         }
         return blocks;
     }
+
+    // ── block model DTOs (deserialized from DocumentTemplate.LayoutJson) ──
+    private sealed class Layout { public List<Block>? Blocks { get; set; } }
+    private sealed class Block
+    {
+        public string? Type { get; set; }
+        public string? Text { get; set; }
+        public string? Token { get; set; }
+        public string? Align { get; set; }
+        public string? Size { get; set; }
+        public bool Bold { get; set; }
+        public string? FileId { get; set; }
+        public int? Width { get; set; }
+        public int? Height { get; set; }
+        public string? Role { get; set; }
+        public string? Label { get; set; }
+        public List<Row>? Rows { get; set; }
+    }
+    private sealed class Row { public string? Label { get; set; } public string? Value { get; set; } }
 }

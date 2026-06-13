@@ -10,13 +10,16 @@ public class DocumentTemplateDto
     public string Module { get; set; } = null!;
     public string Status { get; set; } = null!;
     public string OutputFormat { get; set; } = null!;
-    public string BodyTemplate { get; set; } = null!;
+    public string? LayoutJson { get; set; }
+    public string? BodyTemplate { get; set; }
     public string? HeaderTemplate { get; set; }
     public string? FooterTemplate { get; set; }
     public string? StyleSheet { get; set; }
     public bool UseBranding { get; set; }
+    public Guid? PageTemplateId { get; set; }
     public string? PageSettings { get; set; }
     public int Version { get; set; }
+    public bool IsSystem { get; set; }
     public List<DocumentTemplateTokenDto> Tokens { get; set; } = new();
 }
 
@@ -50,6 +53,22 @@ public class GeneratedDocumentDto
     public string? FileName { get; set; }
     public long? FileSizeBytes { get; set; }
     public DateTime? GeneratedAt { get; set; }
+}
+
+public class PageTemplateDto
+{
+    public Guid Id { get; set; }
+    public string Code { get; set; } = null!;
+    public string NameEn { get; set; } = null!;
+    public string NameAr { get; set; } = null!;
+    public string? Description { get; set; }
+    public string? HeaderConfig { get; set; }
+    public string? FooterConfig { get; set; }
+    public string? Margins { get; set; }
+    public string? Watermark { get; set; }
+    public bool IsSystem { get; set; }
+    public bool IsActive { get; set; }
+    public int SortOrder { get; set; }
 }
 
 public class CompanyBrandingDto

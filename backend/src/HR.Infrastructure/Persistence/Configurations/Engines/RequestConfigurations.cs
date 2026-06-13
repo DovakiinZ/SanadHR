@@ -34,6 +34,18 @@ public class RequestImpactMappingConfiguration : IEntityTypeConfiguration<Reques
     }
 }
 
+public class RequestTemplateMappingConfiguration : IEntityTypeConfiguration<RequestTemplateMapping>
+{
+    public void Configure(EntityTypeBuilder<RequestTemplateMapping> builder)
+    {
+        builder.ToTable("engine_request_template_mappings");
+        builder.HasKey(x => x.Id);
+        builder.HasIndex(x => new { x.TenantId, x.RequestTypeId, x.TriggerEvent });
+        builder.HasOne(x => x.RequestType).WithMany().HasForeignKey(x => x.RequestTypeId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<HR.Domain.Engines.Documents.DocumentTemplate>().WithMany().HasForeignKey(x => x.DocumentTemplateId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
 public class RequestPermissionConfiguration : IEntityTypeConfiguration<RequestPermission>
 {
     public void Configure(EntityTypeBuilder<RequestPermission> builder)

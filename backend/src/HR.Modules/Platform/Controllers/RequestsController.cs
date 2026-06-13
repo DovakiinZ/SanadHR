@@ -167,6 +167,62 @@ public class RequestsController : BaseApiController
         return OkResponse("Template linked");
     }
 
+    // ── Admin: request → template mappings (multiple templates per type, each with a trigger) ──
+
+    /// <summary>All document-template mappings for a request type (template + trigger event).</summary>
+    [HttpGet("types/{id:guid}/templates")]
+    [RequirePermission("Platform.Documents.View")]
+    public async Task<ActionResult<ApiResponse<List<RequestTemplateMappingDto>>>> GetTemplateMappings(Guid id, CancellationToken ct)
+    {
+        var rows = await (from m in _db.RequestTemplateMappings
+                          where m.RequestTypeId == id
+                          join d in _db.DocumentTemplates on m.DocumentTemplateId equals d.Id into dj
+                          from d in dj.DefaultIfEmpty()
+                          orderby m.TriggerEvent, m.SortOrder
+                          select new RequestTemplateMappingDto
+                          {
+                              Id = m.Id, RequestTypeId = m.RequestTypeId, DocumentTemplateId = m.DocumentTemplateId,
+                              TemplateNameAr = d != null ? d.NameAr : null, TriggerEvent = m.TriggerEvent.ToString(),
+                              IsSystem = m.IsSystem, IsActive = m.IsActive,
+                          }).ToListAsync(ct);
+        return OkResponse(rows);
+    }
+
+    /// <summary>Assign a template to a request type for a trigger event.</summary>
+    [HttpPost("types/{id:guid}/templates")]
+    [RequirePermission("Platform.Documents.Edit")]
+    public async Task<ActionResult<ApiResponse<RequestTemplateMappingDto>>> AddTemplateMapping(Guid id, [FromBody] AddTemplateMappingBody body, CancellationToken ct)
+    {
+        if (!await _db.RequestTypes.AnyAsync(t => t.Id == id, ct)) return NotFound(ApiResponse.Fail("Request type not found"));
+        if (!await _db.DocumentTemplates.AnyAsync(d => d.Id == body.TemplateId, ct)) return BadRequest(ApiResponse.Fail("Template not found"));
+        if (!Enum.TryParse<DocumentTriggerEvent>(body.TriggerEvent, true, out var trig)) trig = DocumentTriggerEvent.FinalApproval;
+        if (await _db.RequestTemplateMappings.AnyAsync(m => m.RequestTypeId == id && m.DocumentTemplateId == body.TemplateId && m.TriggerEvent == trig, ct))
+            return BadRequest(ApiResponse.Fail("هذا القالب مرتبط بالفعل بنفس الحدث"));
+
+        var mapping = new Domain.Engines.Requests.RequestTemplateMapping { RequestTypeId = id, DocumentTemplateId = body.TemplateId, TriggerEvent = trig, IsSystem = false };
+        _db.RequestTemplateMappings.Add(mapping);
+        await _db.SaveChangesAsync(ct);
+        var name = await _db.DocumentTemplates.Where(d => d.Id == body.TemplateId).Select(d => d.NameAr).FirstOrDefaultAsync(ct);
+        return CreatedResponse(new RequestTemplateMappingDto
+        {
+            Id = mapping.Id, RequestTypeId = id, DocumentTemplateId = body.TemplateId, TemplateNameAr = name,
+            TriggerEvent = trig.ToString(), IsSystem = false, IsActive = true,
+        });
+    }
+
+    /// <summary>Remove a (non-system) request → template mapping.</summary>
+    [HttpDelete("template-mappings/{mappingId:guid}")]
+    [RequirePermission("Platform.Documents.Edit")]
+    public async Task<ActionResult<ApiResponse>> DeleteTemplateMapping(Guid mappingId, CancellationToken ct)
+    {
+        var m = await _db.RequestTemplateMappings.FirstOrDefaultAsync(x => x.Id == mappingId, ct);
+        if (m is null) return NotFound(ApiResponse.Fail("Mapping not found"));
+        if (m.IsSystem) return BadRequest(ApiResponse.Fail("لا يمكن حذف ربط نظام افتراضي"));
+        _db.RequestTemplateMappings.Remove(m);
+        await _db.SaveChangesAsync(ct);
+        return OkResponse("Mapping removed");
+    }
+
     // ── Submit / decide / cancel ────────────────────────────────────────────────
 
     [HttpPost]
@@ -262,6 +318,53 @@ public class RequestsController : BaseApiController
         return File(pdf, "application/pdf", fileName);
     }
 
+    /// <summary>All generated documents for a request (one per fired template mapping).</summary>
+    [HttpGet("{id:guid}/documents")]
+    public async Task<ActionResult<ApiResponse<List<GeneratedDocInfo>>>> Documents(Guid id, CancellationToken ct)
+    {
+        var docs = await (from gd in _db.GeneratedDocuments
+                          where gd.EntityType == "RequestInstance" && gd.EntityId == id
+                          join d in _db.DocumentTemplates on gd.DocumentTemplateId equals d.Id into dj
+                          from d in dj.DefaultIfEmpty()
+                          orderby gd.GeneratedAt descending
+                          select new GeneratedDocInfo
+                          {
+                              Id = gd.Id, DocumentTemplateId = gd.DocumentTemplateId,
+                              TemplateNameAr = d != null ? d.NameAr : null, FileName = gd.FileName, GeneratedAt = gd.GeneratedAt,
+                          }).ToListAsync(ct);
+        return OkResponse(docs);
+    }
+
+    /// <summary>View (inline) or download a specific generated document — rendered on demand.</summary>
+    [HttpGet("{id:guid}/documents/{docId:guid}")]
+    public async Task<IActionResult> ViewDocument(Guid id, Guid docId, [FromQuery] bool download, CancellationToken ct)
+    {
+        var gd = await _db.GeneratedDocuments.FirstOrDefaultAsync(g => g.Id == docId && g.EntityId == id, ct);
+        if (gd is null) return NotFound();
+        var renderer = HttpContext.RequestServices.GetRequiredService<Services.Documents.IDocumentRenderer>();
+        var (pdf, fileName) = await renderer.RenderRequestPdfAsync(id, gd.DocumentTemplateId, ct);
+        return download ? File(pdf, "application/pdf", fileName) : File(pdf, "application/pdf");
+    }
+
+    /// <summary>Notify the requester by email that a document is ready (uses the notification engine).</summary>
+    [HttpPost("{id:guid}/documents/{docId:guid}/email")]
+    public async Task<ActionResult<ApiResponse>> EmailDocument(Guid id, Guid docId, CancellationToken ct)
+    {
+        var instance = await _db.RequestInstances.Include(r => r.RequestType).FirstOrDefaultAsync(r => r.Id == id, ct);
+        if (instance is null) return NotFound(ApiResponse.Fail("Request not found"));
+        if (!await _db.GeneratedDocuments.AnyAsync(g => g.Id == docId && g.EntityId == id, ct)) return NotFound(ApiResponse.Fail("Document not found"));
+        var uid = await _db.Employees.Where(e => e.Id == instance.EmployeeId).Select(e => e.UserId).FirstOrDefaultAsync(ct);
+        if (uid is null) return BadRequest(ApiResponse.Fail("لا يوجد مستخدم مرتبط لإرسال البريد"));
+
+        var notify = HttpContext.RequestServices.GetRequiredService<Services.Notifications.INotificationService>();
+        await notify.NotifyAsync(uid.Value, "مستند جاهز", "Document ready",
+            $"مستند {instance.RequestType.NameAr} للطلب {instance.RequestNumber} جاهز للتحميل.",
+            $"Your {instance.RequestType.NameEn} document for {instance.RequestNumber} is ready to download.",
+            "Document", instance.Id, "/requests", email: true, ct: ct);
+        await _db.SaveChangesAsync(ct);
+        return OkResponse("Email queued");
+    }
+
     // ── Projection helpers ──────────────────────────────────────────────────────
 
     private static readonly System.Linq.Expressions.Expression<Func<Domain.Engines.Requests.RequestInstance, RequestInstanceDto>> ProjectInstance =
@@ -300,6 +403,27 @@ public sealed class SubmitRequestBody
 }
 public sealed class DecisionBody { public string? Comment { get; set; } }
 public sealed class SetPrintTemplateBody { public Guid? TemplateId { get; set; } }
+public sealed class AddTemplateMappingBody { public Guid TemplateId { get; set; } public string TriggerEvent { get; set; } = "FinalApproval"; }
+
+public sealed class RequestTemplateMappingDto
+{
+    public Guid Id { get; set; }
+    public Guid RequestTypeId { get; set; }
+    public Guid DocumentTemplateId { get; set; }
+    public string? TemplateNameAr { get; set; }
+    public string TriggerEvent { get; set; } = null!;
+    public bool IsSystem { get; set; }
+    public bool IsActive { get; set; }
+}
+
+public sealed class GeneratedDocInfo
+{
+    public Guid Id { get; set; }
+    public Guid DocumentTemplateId { get; set; }
+    public string? TemplateNameAr { get; set; }
+    public string? FileName { get; set; }
+    public DateTime? GeneratedAt { get; set; }
+}
 
 public sealed class RequestTypeAdminDto
 {

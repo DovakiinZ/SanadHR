@@ -167,22 +167,51 @@ export const setLeaveBalance = (employeeId: string, leaveTypeId: string, entitle
     body: { employeeId, leaveTypeId, entitledDays, carriedForwardDays },
   });
 
-// ── Document download (official PDF, streamed with auth) ──
-export async function downloadRequestDocument(requestId: string, fileName = "document.pdf"): Promise<void> {
+// ── Generated documents (one per fired template mapping) ──
+export interface GeneratedDocInfo {
+  id: string;
+  documentTemplateId: string;
+  templateNameAr?: string | null;
+  fileName?: string | null;
+  generatedAt?: string | null;
+}
+
+export const getRequestDocuments = (requestId: string) =>
+  apiFetch<GeneratedDocInfo[]>(`/api/requests/${requestId}/documents`);
+
+export const emailRequestDocument = (requestId: string, docId: string) =>
+  apiFetch<unknown>(`/api/requests/${requestId}/documents/${docId}/email`, { method: "POST" });
+
+async function fetchPdfBlob(url: string): Promise<Blob> {
   const token = getAccessToken();
-  const res = await fetch(`${API_BASE_URL}/api/requests/${requestId}/document`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
+  const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
   if (!res.ok) throw new Error("تعذر تحميل المستند");
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
+  return res.blob();
+}
+
+// Download a specific generated document (or the request's primary when docId omitted).
+export async function downloadRequestDocument(requestId: string, fileName = "document.pdf", docId?: string): Promise<void> {
+  const url = docId
+    ? `${API_BASE_URL}/api/requests/${requestId}/documents/${docId}?download=true`
+    : `${API_BASE_URL}/api/requests/${requestId}/document`;
+  const blob = await fetchPdfBlob(url);
+  const objUrl = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url;
-  a.download = fileName;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  a.href = objUrl; a.download = fileName;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(objUrl), 1000);
+}
+
+// Open a document inline in a new tab; pass print=true to trigger the print dialog.
+export async function viewRequestDocument(requestId: string, docId?: string, print = false): Promise<void> {
+  const url = docId
+    ? `${API_BASE_URL}/api/requests/${requestId}/documents/${docId}`
+    : `${API_BASE_URL}/api/requests/${requestId}/document`;
+  const blob = await fetchPdfBlob(url);
+  const objUrl = URL.createObjectURL(blob);
+  const win = window.open(objUrl, "_blank");
+  if (win && print) win.addEventListener("load", () => win.print());
+  setTimeout(() => URL.revokeObjectURL(objUrl), 60000);
 }
 
 // ── helpers ──

@@ -128,6 +128,7 @@ public class PlatformMappingProfile : Profile
 
         // Documents
         CreateMap<DocumentTemplate, DocumentTemplateDto>();
+        CreateMap<PageTemplate, PageTemplateDto>();
         CreateMap<DocumentTemplateVersion, DocumentTemplateVersionDto>();
         CreateMap<DocumentTemplateToken, DocumentTemplateTokenDto>();
         CreateMap<GeneratedDocument, GeneratedDocumentDto>();

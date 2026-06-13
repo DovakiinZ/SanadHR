@@ -1,14 +1,15 @@
 "use client";
 
 import { type ElementType, useCallback, useEffect, useMemo, useState } from "react";
-import { Check, FileCheck, Inbox, Loader2, Send, X, Clock, FileText } from "lucide-react";
+import { Check, Download, FileCheck, Inbox, Loader2, Mail, Printer, Send, X, Clock, Eye, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { ApiError } from "@/lib/api-client";
 import { requestIcon } from "@/lib/request-icons";
 import {
-  approveRequest, cancelRequest, downloadRequestDocument, getInbox, getMyRequests, getRequestType, getRequestTypes,
+  approveRequest, cancelRequest, downloadRequestDocument, emailRequestDocument, GeneratedDocInfo,
+  getInbox, getMyRequests, getRequestDocuments, getRequestType, getRequestTypes,
   rejectRequest, RequestInstance, RequestType, RequestTypeDetail,
-  requestStatusColor, requestStatusLabel,
+  requestStatusColor, requestStatusLabel, viewRequestDocument,
 } from "@/lib/api/request-center";
 import { RequestForm } from "@/components/requests/request-form";
 import { LeaveRequestWizard } from "@/components/requests/leave-request-wizard";
@@ -204,6 +205,59 @@ function Modal({ children, onClose, title }: { children: React.ReactNode; onClos
   );
 }
 
+function DocumentsPanel({ instanceId, requestNumber, hasPrimary }: { instanceId: string; requestNumber: string; hasPrimary: boolean }) {
+  const [docs, setDocs] = useState<GeneratedDocInfo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  useEffect(() => {
+    getRequestDocuments(instanceId).then(setDocs).catch(() => setDocs([])).finally(() => setLoading(false));
+  }, [instanceId]);
+
+  if (loading) return null;
+  if (docs.length === 0 && !hasPrimary) return null;
+
+  const run = async (key: string, fn: () => Promise<void>, errMsg: string) => {
+    setBusy(key);
+    try { await fn(); } catch { toast.error(errMsg); } finally { setBusy(null); }
+  };
+
+  // Fallback to the request's primary document when no per-mapping rows exist.
+  const rows: GeneratedDocInfo[] = docs.length > 0 ? docs : [{ id: "", documentTemplateId: "", templateNameAr: "المستند الرسمي", fileName: `${requestNumber}.pdf` }];
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">المستندات</p>
+      <div className="space-y-2">
+        {rows.map((d, i) => {
+          const docId = d.id || undefined;
+          const fileName = d.fileName || `${requestNumber}.pdf`;
+          const k = d.id || `primary${i}`;
+          return (
+            <div key={k} className="space-y-2 border border-border bg-card p-3">
+              <div className="flex items-center gap-2 text-sm font-medium"><FileText className="h-4 w-4 text-green-400" /> {d.templateNameAr ?? "مستند"}</div>
+              <div className="flex flex-wrap gap-1.5">
+                <ActionBtn icon={Eye} label="عرض" busy={busy === `v${k}`} onClick={() => run(`v${k}`, () => viewRequestDocument(instanceId, docId, false), "تعذر العرض")} />
+                <ActionBtn icon={Download} label="تحميل" busy={busy === `d${k}`} onClick={() => run(`d${k}`, () => downloadRequestDocument(instanceId, fileName, docId), "تعذر التحميل")} />
+                <ActionBtn icon={Printer} label="طباعة" busy={busy === `p${k}`} onClick={() => run(`p${k}`, () => viewRequestDocument(instanceId, docId, true), "تعذر الطباعة")} />
+                {docId && <ActionBtn icon={Mail} label="إرسال بريد" busy={busy === `e${k}`} onClick={() => run(`e${k}`, async () => { await emailRequestDocument(instanceId, docId); toast.success("تم إرسال البريد"); }, "تعذر الإرسال")} />}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ActionBtn({ icon: Icon, label, onClick, busy }: { icon: ElementType; label: string; onClick: () => void; busy?: boolean }) {
+  return (
+    <button onClick={onClick} disabled={busy} className="inline-flex items-center gap-1 border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50">
+      {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Icon className="h-3 w-3" />} {label}
+    </button>
+  );
+}
+
 function DetailDrawer({ instance, onClose, onApprove, onReject, onCancel }: {
   instance: RequestInstance; onClose: () => void; onApprove?: () => void; onReject?: () => void; onCancel?: () => void;
 }) {
@@ -222,15 +276,9 @@ function DetailDrawer({ instance, onClose, onApprove, onReject, onCancel }: {
         <div className="flex-1 space-y-5 overflow-auto p-5">
           <div className="flex flex-wrap items-center gap-2">
             <span className={`border px-2 py-1 text-xs ${requestStatusColor(instance.status)}`}>{requestStatusLabel(instance.status)}</span>
-            {instance.generatedDocumentId && (
-              <button
-                onClick={() => downloadRequestDocument(instance.id, `${instance.requestNumber}.pdf`).catch(() => toast.error("تعذر تحميل المستند"))}
-                className="inline-flex items-center gap-1 border border-green-500/30 bg-green-500/10 px-2 py-1 text-xs text-green-400 hover:bg-green-500/20"
-              >
-                <FileText className="h-3 w-3" /> تحميل المستند الرسمي
-              </button>
-            )}
           </div>
+
+          <DocumentsPanel instanceId={instance.id} requestNumber={instance.requestNumber} hasPrimary={!!instance.generatedDocumentId} />
 
           {(instance.startDate || instance.daysCount) && (
             <div className="text-sm text-muted-foreground">

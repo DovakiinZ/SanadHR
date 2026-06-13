@@ -16,6 +16,8 @@ public record UpdateCompanyProfileCommand : IRequest<CompanyProfileDto>
     public string NameAr { get; init; } = null!;
     public string? LogoUrl { get; init; }
     public string? StampUrl { get; init; }
+    public string? HrSignatureUrl { get; init; }
+    public string? CeoSignatureUrl { get; init; }
     public string? CommercialRegistration { get; init; }
     public string? VatNumber { get; init; }
     public string? Website { get; init; }
@@ -198,6 +200,8 @@ public class UpdateCompanyProfileCommandHandler : IRequestHandler<UpdateCompanyP
         entity.NameAr = request.NameAr;
         entity.LogoUrl = request.LogoUrl;
         entity.StampUrl = request.StampUrl;
+        entity.HrSignatureUrl = request.HrSignatureUrl;
+        entity.CeoSignatureUrl = request.CeoSignatureUrl;
         entity.CommercialRegistration = request.CommercialRegistration;
         entity.VatNumber = request.VatNumber;
         entity.Website = request.Website;

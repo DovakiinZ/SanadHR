@@ -15,12 +15,31 @@ public class DocumentTemplateConfiguration : IEntityTypeConfiguration<DocumentTe
         builder.Property(x => x.NameAr).HasMaxLength(200).IsRequired();
         builder.Property(x => x.Description).HasMaxLength(1000);
         builder.Property(x => x.Module).HasMaxLength(100).IsRequired();
-        builder.Property(x => x.BodyTemplate).IsRequired();
+        builder.Property(x => x.LayoutJson).HasColumnType("jsonb");
         builder.Property(x => x.PageSettings).HasColumnType("jsonb");
         builder.HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
         builder.HasMany(x => x.Tokens).WithOne(x => x.DocumentTemplate).HasForeignKey(x => x.DocumentTemplateId).OnDelete(DeleteBehavior.Cascade);
         builder.HasMany(x => x.Versions).WithOne(x => x.DocumentTemplate).HasForeignKey(x => x.DocumentTemplateId).OnDelete(DeleteBehavior.Cascade);
         builder.HasMany(x => x.GeneratedDocuments).WithOne(x => x.DocumentTemplate).HasForeignKey(x => x.DocumentTemplateId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<PageTemplate>().WithMany().HasForeignKey(x => x.PageTemplateId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+public class PageTemplateConfiguration : IEntityTypeConfiguration<PageTemplate>
+{
+    public void Configure(EntityTypeBuilder<PageTemplate> builder)
+    {
+        builder.ToTable("engine_page_templates");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Code).HasMaxLength(100).IsRequired();
+        builder.Property(x => x.NameEn).HasMaxLength(200).IsRequired();
+        builder.Property(x => x.NameAr).HasMaxLength(200).IsRequired();
+        builder.Property(x => x.Description).HasMaxLength(1000);
+        builder.Property(x => x.HeaderConfig).HasColumnType("jsonb");
+        builder.Property(x => x.FooterConfig).HasColumnType("jsonb");
+        builder.Property(x => x.Margins).HasColumnType("jsonb");
+        builder.Property(x => x.Watermark).HasColumnType("jsonb");
+        builder.HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
     }
 }
 

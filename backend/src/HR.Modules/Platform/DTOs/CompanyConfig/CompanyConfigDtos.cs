@@ -7,6 +7,8 @@ public record CompanyProfileDto
     public string NameAr { get; init; } = null!;
     public string? LogoUrl { get; init; }
     public string? StampUrl { get; init; }
+    public string? HrSignatureUrl { get; init; }
+    public string? CeoSignatureUrl { get; init; }
     public string? CommercialRegistration { get; init; }
     public string? VatNumber { get; init; }
     public string? Website { get; init; }
