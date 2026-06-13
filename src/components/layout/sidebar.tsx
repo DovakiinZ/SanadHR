@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -15,6 +16,7 @@ import {
   Settings,
   LogOut,
   CheckSquare,
+  ClipboardCheck,
 } from "lucide-react";
 import {
   Tooltip,
@@ -22,6 +24,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { logout } from "@/lib/api/auth";
+import { getMyApprovals } from "@/lib/api/approvals";
 
 const navItems = [
   { label: "لوحة التحكم", href: "/dashboard", icon: LayoutDashboard },
@@ -32,6 +35,7 @@ const navItems = [
   { label: "السلف", href: "/loans", icon: HandCoins },
   { label: "المهام", href: "/tasks", icon: CheckSquare },
   { label: "الطلبات", href: "/requests", icon: FileText },
+  { label: "الموافقات", href: "/approvals", icon: ClipboardCheck, badge: true },
   { label: "التقارير", href: "/reports", icon: BarChart3 },
   { label: "المستندات", href: "/documents", icon: FolderOpen },
   { label: "الإعدادات", href: "/settings", icon: Settings },
@@ -39,6 +43,14 @@ const navItems = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const [pending, setPending] = useState(0);
+
+  useEffect(() => {
+    const load = () => getMyApprovals().then((a) => setPending(a.filter((x) => x.status === "Pending").length)).catch(() => {});
+    load();
+    const t = setInterval(load, 60_000);
+    return () => clearInterval(t);
+  }, [pathname]);
 
   const handleLogout = () => {
     logout();
@@ -57,17 +69,23 @@ export function Sidebar() {
           const isActive =
             pathname === item.href || pathname?.startsWith(item.href + "/");
           const Icon = item.icon;
+          const showBadge = "badge" in item && item.badge && pending > 0;
           return (
             <Tooltip key={item.href}>
               <TooltipTrigger
                 render={<Link href={item.href} />}
-                className={`flex h-10 w-10 items-center justify-center transition-colors ${
+                className={`relative flex h-10 w-10 items-center justify-center transition-colors ${
                   isActive
                     ? "bg-primary text-primary-foreground"
                     : "text-muted-foreground hover:bg-card hover:text-foreground"
                 }`}
               >
                 <Icon className="h-5 w-5" />
+                {showBadge && (
+                  <span className="absolute -top-0.5 right-0.5 flex h-4 min-w-4 items-center justify-center bg-destructive px-1 text-[10px] font-bold text-white">
+                    {pending > 9 ? "9+" : pending}
+                  </span>
+                )}
               </TooltipTrigger>
               <TooltipContent side="left" className="font-sans">
                 {item.label}

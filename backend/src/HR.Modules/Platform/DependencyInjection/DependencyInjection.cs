@@ -45,6 +45,10 @@ public static class DependencyInjection
         services.AddScoped<HR.Modules.Platform.Services.Dashboards.IDashboardSeeder,
             HR.Modules.Platform.Services.Dashboards.DashboardSeeder>();
 
+        // Notification engine (bell + email queue)
+        services.AddScoped<HR.Modules.Platform.Services.Notifications.INotificationService,
+            HR.Modules.Platform.Services.Notifications.NotificationService>();
+
         // Request Center engine + system-request seeder
         services.AddScoped<HR.Modules.Platform.Services.Requests.ILeaveService,
             HR.Modules.Platform.Services.Requests.LeaveService>();

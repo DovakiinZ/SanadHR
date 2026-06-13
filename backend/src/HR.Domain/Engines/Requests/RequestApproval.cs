@@ -17,6 +17,7 @@ public class RequestApproval : BaseEntity
     public string? Comment { get; set; }
     public Guid? DecidedByUserId { get; set; }
     public DateTime? DecidedAt { get; set; }
+    public DateTime? DueAt { get; set; }   // SLA due date for this approval step
 
     public RequestInstance RequestInstance { get; set; } = null!;
 }

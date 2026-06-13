@@ -47,3 +47,19 @@ public class NotificationConfiguration : IEntityTypeConfiguration<Notification>
         builder.HasIndex(x => new { x.TenantId, x.UserId, x.IsRead });
     }
 }
+
+public class EmailNotificationQueueConfiguration : IEntityTypeConfiguration<EmailNotificationQueue>
+{
+    public void Configure(EntityTypeBuilder<EmailNotificationQueue> builder)
+    {
+        builder.ToTable("engine_email_queue");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.ToEmail).HasMaxLength(320).IsRequired();
+        builder.Property(x => x.Subject).HasMaxLength(500).IsRequired();
+        builder.Property(x => x.Body).HasColumnType("text").IsRequired();
+        builder.Property(x => x.Category).HasMaxLength(100);
+        builder.Property(x => x.Link).HasMaxLength(500);
+        builder.Property(x => x.Error).HasMaxLength(2000);
+        builder.HasIndex(x => new { x.TenantId, x.Status });
+    }
+}

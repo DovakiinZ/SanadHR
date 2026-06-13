@@ -17,6 +17,9 @@ public interface IRequestEngine
     /// On final approval, applies all configured impacts.</summary>
     Task<RequestInstance> DecideAsync(Guid requestInstanceId, bool approved, string? comment, CancellationToken ct);
 
+    /// <summary>Return the request to the requester for changes (current approver action).</summary>
+    Task<RequestInstance> ReturnAsync(Guid requestInstanceId, string? comment, CancellationToken ct);
+
     /// <summary>Cancel a request the current user owns (while still pending).</summary>
     Task<RequestInstance> CancelAsync(Guid requestInstanceId, CancellationToken ct);
 }

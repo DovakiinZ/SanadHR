@@ -10,4 +10,5 @@ public enum RequestStatus
     Draft = 5,
     Submitted = 6,
     InProgress = 7,
+    Returned = 8,
 }

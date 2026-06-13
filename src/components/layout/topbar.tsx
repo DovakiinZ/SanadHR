@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bell, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { getUser, AuthUser } from "@/lib/auth-storage";
+import { NotificationBell } from "./notification-bell";
 
 export function Topbar() {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -30,10 +31,7 @@ export function Topbar() {
 
       {/* Actions */}
       <div className="flex items-center gap-4">
-        <button className="relative flex h-9 w-9 items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
-          <Bell className="h-5 w-5" />
-          <span className="absolute top-1 left-1 h-2 w-2 bg-primary" />
-        </button>
+        <NotificationBell />
 
         <div className="flex items-center gap-3">
           <div className="text-left">

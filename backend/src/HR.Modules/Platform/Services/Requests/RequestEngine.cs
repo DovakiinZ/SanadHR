@@ -23,12 +23,15 @@ public sealed class RequestEngine : IRequestEngine
     private readonly ITimelineEngine _timeline;
     private readonly IAuditEngine _audit;
     private readonly ILeaveService _leave;
+    private readonly HR.Modules.Platform.Services.Notifications.INotificationService _notify;
 
+    private const int SlaHours = 48;
     private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
 
-    public RequestEngine(ApplicationDbContext db, ICurrentUserService user, ITimelineEngine timeline, IAuditEngine audit, ILeaveService leave)
+    public RequestEngine(ApplicationDbContext db, ICurrentUserService user, ITimelineEngine timeline, IAuditEngine audit, ILeaveService leave,
+        HR.Modules.Platform.Services.Notifications.INotificationService notify)
     {
-        _db = db; _user = user; _timeline = timeline; _audit = audit; _leave = leave;
+        _db = db; _user = user; _timeline = timeline; _audit = audit; _leave = leave; _notify = notify;
     }
 
     // ── Submit ────────────────────────────────────────────────────────────────
@@ -116,7 +119,8 @@ public sealed class RequestEngine : IRequestEngine
             {
                 chain[i].RequestInstanceId = instance.Id;
                 chain[i].StepOrder = i + 1;
-                chain[i].Status = i == 0 ? RequestApprovalStatus.Pending : RequestApprovalStatus.Pending;
+                chain[i].Status = RequestApprovalStatus.Pending;
+                chain[i].DueAt = DateTime.UtcNow.AddHours(SlaHours);   // SLA per step
                 _db.RequestApprovals.Add(chain[i]);
             }
             instance.Status = RequestStatus.InProgress;
@@ -135,8 +139,12 @@ public sealed class RequestEngine : IRequestEngine
         {
             var first = chain[0];
             if (first.AssignedToUserId is { } approverId)
-                await NotifyAsync(approverId, "طلب بانتظار موافقتك", "A request needs your approval",
-                    $"{type.NameAr} — {instance.RequestNumber}", $"{type.NameEn} — {instance.RequestNumber}", "RequestApproval", instance.Id, ct);
+            {
+                var who = $"{employee.FirstNameAr ?? employee.FirstName} {employee.LastNameAr ?? employee.LastName}".Trim();
+                await NotifyAsync(approverId, "طلب جديد بانتظار موافقتك", "A request needs your approval",
+                    $"{type.NameAr} جديد بانتظار موافقتك من الموظف {who} — {instance.RequestNumber}",
+                    $"New {type.NameEn} awaiting your approval from {who} — {instance.RequestNumber}", "RequestApproval", instance.Id, ct);
+            }
         }
         else
         {
@@ -205,6 +213,33 @@ public sealed class RequestEngine : IRequestEngine
         var employee = await _db.Employees.FirstAsync(e => e.Id == instance.EmployeeId, ct);
         await ApplyImpactsAsync(instance, instance.RequestType, employee, ct);
         await NotifySubmitterAsync(instance, "تمت الموافقة على طلبك", "Your request was approved", ct);
+        await _db.SaveChangesAsync(ct);
+        return instance;
+    }
+
+    public async Task<RequestInstance> ReturnAsync(Guid requestInstanceId, string? comment, CancellationToken ct)
+    {
+        var instance = await _db.RequestInstances.Include(r => r.Approvals).Include(r => r.RequestType)
+            .FirstOrDefaultAsync(r => r.Id == requestInstanceId, ct)
+            ?? throw new NotFoundException("RequestInstance", requestInstanceId);
+        if (instance.Status is not (RequestStatus.Submitted or RequestStatus.InProgress))
+            throw Invalid("status", "This request is not awaiting a decision.");
+
+        var step = instance.Approvals.Where(a => a.Status == RequestApprovalStatus.Pending)
+            .OrderBy(a => a.StepOrder).FirstOrDefault()
+            ?? throw Invalid("step", "No pending approval step.");
+
+        var isAdmin = await IsAdminAsync(ct);
+        if (step.AssignedToUserId != _user.UserId && !isAdmin)
+            throw new ForbiddenException("This approval is not assigned to you.");
+
+        step.Status = RequestApprovalStatus.Returned;
+        step.DecidedByUserId = _user.UserId;
+        step.DecidedAt = DateTime.UtcNow;
+        step.Comment = comment;
+        await TransitionAsync(instance, RequestStatus.Returned, comment, "أُعيد الطلب للتعديل", "Returned for changes", ct);
+        await CloseWorkflowAsync(instance, WorkflowStatus.Cancelled, ct);
+        await NotifySubmitterAsync(instance, "أُعيد طلبك للتعديل", "Your request was returned for changes", ct);
         await _db.SaveChangesAsync(ct);
         return instance;
     }
@@ -443,14 +478,12 @@ public sealed class RequestEngine : IRequestEngine
             await NotifyAsync(uid, titleAr, titleEn, instance.RequestNumber, instance.RequestNumber, "RequestDecision", instance.Id, ct);
     }
 
-    private Task NotifyAsync(Guid userId, string titleAr, string titleEn, string bodyAr, string bodyEn, string category, Guid entityId, CancellationToken ct)
+    // Delegates to the central notification engine (bell + queued email). Approver
+    // notifications link to the Approval Center; requester notifications to My Requests.
+    private async Task NotifyAsync(Guid userId, string titleAr, string titleEn, string bodyAr, string bodyEn, string category, Guid entityId, CancellationToken ct)
     {
-        _db.Notifications.Add(new Notification
-        {
-            UserId = userId, TitleAr = titleAr, TitleEn = titleEn, BodyAr = bodyAr, BodyEn = bodyEn,
-            Category = category, EntityId = entityId, Link = "/requests", IsRead = false,
-        });
-        return Task.CompletedTask;
+        var link = category == "RequestApproval" ? "/approvals" : "/requests";
+        await _notify.NotifyAsync(userId, titleAr, titleEn, bodyAr, bodyEn, category, entityId, link, ct: ct);
     }
 
     private async Task<string> NextRequestNumberAsync(CancellationToken ct)

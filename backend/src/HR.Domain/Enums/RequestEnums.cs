@@ -13,6 +13,14 @@ public enum RequestApprovalStatus
     Approved = 2,
     Rejected = 3,
     Skipped = 4,
+    Returned = 5,
+}
+
+public enum EmailQueueStatus
+{
+    Pending = 1,
+    Sent = 2,
+    Failed = 3,
 }
 
 public enum RequestPermissionAction
