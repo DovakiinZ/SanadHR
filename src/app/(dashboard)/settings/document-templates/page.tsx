@@ -8,7 +8,8 @@ import { ApiError } from "@/lib/api-client";
 import { usePermissions } from "@/lib/permissions";
 import {
   createDocumentTemplate, deleteDocumentTemplate, DocumentTemplate, getDocumentTemplate,
-  getDocumentTemplates, getTokenCatalog, previewTemplateHtml, publishDocumentTemplate,
+  getDocumentTemplates, getRequestTypeBindings, getTokenCatalog, previewTemplateHtml,
+  publishDocumentTemplate, RequestTypeBinding, setRequestTypePrintTemplate,
   TokenGroup, updateDocumentTemplate,
 } from "@/lib/api/document-templates";
 
@@ -56,6 +57,67 @@ export default function DocumentTemplatesPage() {
           {templates.length === 0 && <div className="border border-dashed border-border py-16 text-center text-muted-foreground">لا توجد قوالب</div>}
         </div>
       )}
+
+      {!loading && <Bindings templates={templates} canEdit={canEdit} />}
+    </div>
+  );
+}
+
+function Bindings({ templates, canEdit }: { templates: DocumentTemplate[]; canEdit: boolean }) {
+  const [rows, setRows] = useState<RequestTypeBinding[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const published = templates.filter((t) => t.status === "Published");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try { setRows(await getRequestTypeBindings()); }
+    catch { /* admin-only; ignore if forbidden */ }
+    finally { setLoading(false); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const change = async (id: string, templateId: string) => {
+    setSavingId(id);
+    try {
+      await setRequestTypePrintTemplate(id, templateId || null);
+      setRows((rs) => rs.map((r) => (r.id === id ? { ...r, printTemplateId: templateId || null } : r)));
+      toast.success("تم ربط القالب");
+    } catch { toast.error("تعذر الربط"); }
+    finally { setSavingId(null); }
+  };
+
+  if (loading) return null;
+  if (rows.length === 0) return null;
+
+  return (
+    <div className="space-y-2 border-t border-border pt-5">
+      <div>
+        <h2 className="text-lg font-bold">ربط القوالب بأنواع الطلبات</h2>
+        <p className="mt-1 text-sm text-muted-foreground">اختر القالب الرسمي الذي يُطبع لكل نوع طلب عند الموافقة — تظهر القوالب المنشورة فقط</p>
+      </div>
+      <div className="divide-y divide-border border border-border bg-card">
+        {rows.map((r) => (
+          <div key={r.id} className="flex items-center justify-between gap-3 px-4 py-3">
+            <div className="flex items-center gap-3">
+              <FileText className="h-4 w-4 text-muted-foreground" />
+              <div><div className="font-medium">{r.nameAr}</div><div className="font-mono text-xs text-muted-foreground">{r.code}</div></div>
+            </div>
+            <div className="flex items-center gap-2">
+              {savingId === r.id && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+              <select
+                value={r.printTemplateId ?? ""}
+                disabled={!canEdit || savingId === r.id}
+                onChange={(e) => change(r.id, e.target.value)}
+                className="h-9 min-w-56 border border-border bg-secondary px-3 text-sm disabled:opacity-50"
+              >
+                <option value="">— بدون قالب —</option>
+                {published.map((t) => <option key={t.id} value={t.id}>{t.nameAr}</option>)}
+              </select>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

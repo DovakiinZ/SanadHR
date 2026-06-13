@@ -118,7 +118,7 @@ public sealed class DocumentRenderer : IDocumentRenderer
         };
         var bodyBlocks = string.IsNullOrWhiteSpace(bodyTemplate) ? null : ParseHtmlBlocks(ResolveTokens(bodyTemplate, tokens));
 
-        var pdf = Document.Create(doc =>
+        byte[] BuildPdf(List<(string kind, string text)>? bb) => Document.Create(doc =>
         {
             doc.Page(page =>
             {
@@ -150,7 +150,7 @@ public sealed class DocumentRenderer : IDocumentRenderer
                             }.Where(s => !string.IsNullOrWhiteSpace(s)));
                             if (contactLine.Length > 0) c.Item().Text(contactLine).FontSize(9).FontColor(Colors.Grey.Medium);
                         });
-                        if (logo is not null) row.ConstantItem(90).AlignLeft().Height(60).Image(logo).FitHeight();
+                        if (logo is not null) row.ConstantItem(90).AlignLeft().Height(60).Image(logo).FitArea();
                     });
                     col.Item().PaddingTop(8).LineHorizontal(1).LineColor(Colors.Grey.Lighten1);
                 });
@@ -160,10 +160,10 @@ public sealed class DocumentRenderer : IDocumentRenderer
                     col.Spacing(12);
                     col.Item().AlignCenter().Text(title).FontSize(15).Bold();
 
-                    if (bodyBlocks is not null)
+                    if (bb is not null)
                     {
                         // Render the admin's template body (token-resolved HTML subset).
-                        foreach (var (kind, text) in bodyBlocks)
+                        foreach (var (kind, text) in bb)
                         {
                             if (string.IsNullOrWhiteSpace(text) && kind != "hr") continue;
                             switch (kind)
@@ -217,6 +217,15 @@ public sealed class DocumentRenderer : IDocumentRenderer
                 });
             });
         }).GeneratePdf();
+
+        // Render with the template body; if it can't lay out, fall back to the structured layout.
+        byte[] pdf;
+        try { pdf = BuildPdf(bodyBlocks); }
+        catch (QuestPDF.Drawing.Exceptions.DocumentLayoutException ex)
+        {
+            Console.Error.WriteLine($"[DocumentRenderer] template body layout failed, falling back: {ex.Message}");
+            pdf = BuildPdf(null);
+        }
 
         return (pdf, $"{instance.RequestType.Code}-{instance.RequestNumber}.pdf");
     }

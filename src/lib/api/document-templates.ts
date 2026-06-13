@@ -55,3 +55,19 @@ export const getTokenCatalog = () =>
 
 export const previewTemplateHtml = (body: string) =>
   apiFetch<string>("/api/platform/documents/preview-html", { method: "POST", body: { body } });
+
+// ── Request-type ↔ template binding (entity-level; this is what actually drives PDF output) ──
+export interface RequestTypeBinding {
+  id: string;
+  code: string;
+  nameAr: string;
+  nameEn: string;
+  isActive: boolean;
+  printTemplateId: string | null;
+}
+
+export const getRequestTypeBindings = () =>
+  apiFetch<RequestTypeBinding[]>("/api/requests/types/admin");
+
+export const setRequestTypePrintTemplate = (id: string, templateId: string | null) =>
+  apiFetch<unknown>(`/api/requests/types/${id}/print-template`, { method: "PUT", body: { templateId } });

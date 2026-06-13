@@ -1,4 +1,5 @@
 using HR.Api.Controllers;
+using HR.Api.Filters;
 using HR.Application.Common.Interfaces;
 using HR.Application.Common.Models;
 using HR.Domain.Enums;
@@ -129,6 +130,41 @@ public class RequestsController : BaseApiController
             Kind = t.Kind.ToString(), FormDefinitionId = t.FormDefinitionId,
             Icon = t.Icon, Color = t.Color, Fields = fields, IsLeaveRequest = isLeave,
         });
+    }
+
+    // ── Admin: bind a print template to a request type (entity-level — drives PDF output) ──
+
+    /// <summary>All request types with their current print-template linkage (admin).</summary>
+    [HttpGet("types/admin")]
+    [RequirePermission("Platform.Documents.View")]
+    public async Task<ActionResult<ApiResponse<List<RequestTypeAdminDto>>>> GetTypesAdmin(CancellationToken ct)
+    {
+        var types = await _db.RequestTypes
+            .OrderBy(t => t.SortOrder).ThenBy(t => t.NameAr)
+            .Select(t => new RequestTypeAdminDto
+            {
+                Id = t.Id, Code = t.Code, NameAr = t.NameAr, NameEn = t.NameEn,
+                IsActive = t.IsActive, PrintTemplateId = t.PrintTemplateId,
+            }).ToListAsync(ct);
+        return OkResponse(types);
+    }
+
+    /// <summary>Link (or clear) the official document template a request type prints.</summary>
+    [HttpPut("types/{id:guid}/print-template")]
+    [RequirePermission("Platform.Documents.Edit")]
+    public async Task<ActionResult<ApiResponse>> SetPrintTemplate(Guid id, [FromBody] SetPrintTemplateBody body, CancellationToken ct)
+    {
+        var type = await _db.RequestTypes.FirstOrDefaultAsync(t => t.Id == id, ct);
+        if (type is null) return NotFound(ApiResponse.Fail("Request type not found"));
+        if (body.TemplateId is { } tid && !await _db.DocumentTemplates.AnyAsync(d => d.Id == tid, ct))
+            return BadRequest(ApiResponse.Fail("Template not found"));
+
+        type.PrintTemplateId = body.TemplateId;
+        var mapping = await _db.RequestImpactMappings.FirstOrDefaultAsync(m => m.RequestTypeId == id, ct);
+        if (mapping is null) { mapping = new Domain.Engines.Requests.RequestImpactMapping { RequestTypeId = id }; _db.RequestImpactMappings.Add(mapping); }
+        mapping.GeneratesDocument = body.TemplateId is not null;
+        await _db.SaveChangesAsync(ct);
+        return OkResponse("Template linked");
     }
 
     // ── Submit / decide / cancel ────────────────────────────────────────────────
@@ -263,6 +299,17 @@ public sealed class SubmitRequestBody
     public List<RequestValueInput>? Values { get; set; }
 }
 public sealed class DecisionBody { public string? Comment { get; set; } }
+public sealed class SetPrintTemplateBody { public Guid? TemplateId { get; set; } }
+
+public sealed class RequestTypeAdminDto
+{
+    public Guid Id { get; set; }
+    public string Code { get; set; } = null!;
+    public string NameAr { get; set; } = null!;
+    public string NameEn { get; set; } = null!;
+    public bool IsActive { get; set; }
+    public Guid? PrintTemplateId { get; set; }
+}
 
 public sealed class RequestTypeDto
 {
