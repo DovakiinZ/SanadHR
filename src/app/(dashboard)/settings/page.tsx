@@ -1,7 +1,13 @@
 import Link from "next/link";
-import { Building2, Database, ChevronLeft, Inbox, Wallet, CalendarDays, Landmark } from "lucide-react";
+import { Building2, Database, ChevronLeft, Inbox, Wallet, CalendarDays, Landmark, FileText } from "lucide-react";
 
 const categories = [
+  {
+    href: "/settings/document-templates",
+    title: "قوالب المستندات",
+    description: "صمّم المستندات الرسمية بالنصوص والرموز ({{Employee.FullName}}…) مع معاينة مباشرة — بدون مبرمجين",
+    icon: FileText,
+  },
   {
     href: "/settings/company",
     title: "إعدادات الشركة",

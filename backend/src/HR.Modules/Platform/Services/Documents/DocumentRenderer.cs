@@ -47,9 +47,12 @@ public sealed class DocumentRenderer : IDocumentRenderer
         var approvals = await _db.RequestApprovals.Where(a => a.RequestInstanceId == requestInstanceId)
             .OrderBy(a => a.StepOrder).ToListAsync(ct);
 
-        string? title = null;
+        string? title = null, bodyTemplate = null;
         if (instance.RequestType.PrintTemplateId is { } tplId)
-            title = await _db.DocumentTemplates.Where(t => t.Id == tplId).Select(t => t.NameAr).FirstOrDefaultAsync(ct);
+        {
+            var tpl = await _db.DocumentTemplates.Where(t => t.Id == tplId).Select(t => new { t.NameAr, t.BodyTemplate }).FirstOrDefaultAsync(ct);
+            title = tpl?.NameAr; bodyTemplate = tpl?.BodyTemplate;
+        }
         title ??= instance.RequestType.NameAr;
 
         var department = employee?.DepartmentId is { } depId
@@ -58,6 +61,8 @@ public sealed class DocumentRenderer : IDocumentRenderer
             ? await _db.MasterDataItems.Where(m => m.Id == jtId).Select(m => m.NameAr).FirstOrDefaultAsync(ct) : null;
         var leaveType = instance.LeaveTypeId is { } ltId
             ? await _db.MasterDataItems.Where(m => m.Id == ltId).Select(m => m.NameAr).FirstOrDefaultAsync(ct) : null;
+        var managerName = employee?.ManagerId is { } mId
+            ? await _db.Employees.Where(e => e.Id == mId).Select(e => (e.FirstNameAr ?? e.FirstName) + " " + (e.LastNameAr ?? e.LastName)).FirstOrDefaultAsync(ct) : null;
 
         var logo = await LoadImageAsync(company?.LogoUrl, ct);
         var stamp = await LoadImageAsync(company?.StampUrl, ct);
@@ -79,6 +84,39 @@ public sealed class DocumentRenderer : IDocumentRenderer
         if (instance.StartDate is { } sd) details.Add(("من", sd.ToString("yyyy-MM-dd")));
         if (instance.EndDate is { } ed) details.Add(("إلى", ed.ToString("yyyy-MM-dd")));
         if (instance.DaysCount is { } dc) details.Add(("عدد الأيام", $"{dc}"));
+
+        // Admin-authored template body: resolve tokens, render its HTML subset (else fall back to the details table).
+        var tokens = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Employee.FullName"] = employeeName,
+            ["Employee.EmployeeNumber"] = employee?.EmployeeNumber ?? "",
+            ["Employee.Department"] = department ?? "",
+            ["Employee.JobTitle"] = jobTitle ?? "",
+            ["Employee.Manager"] = managerName ?? "",
+            ["Request.Number"] = instance.RequestNumber,
+            ["Request.CreatedDate"] = instance.SubmittedAt.ToString("yyyy-MM-dd"),
+            ["Request.LeaveType"] = leaveType ?? "",
+            ["Request.StartDate"] = instance.StartDate?.ToString("yyyy-MM-dd") ?? "",
+            ["Request.EndDate"] = instance.EndDate?.ToString("yyyy-MM-dd") ?? "",
+            ["Request.Days"] = instance.DaysCount?.ToString() ?? "",
+            ["Company.Name"] = company?.NameAr ?? "",
+            ["Company.CR"] = company?.CommercialRegistration ?? "",
+            ["Company.VAT"] = company?.VatNumber ?? "",
+            ["System.Today"] = generatedDate,
+            // Aliases for the originally-seeded template token names
+            ["EmployeeName"] = employeeName,
+            ["EmployeeNumber"] = employee?.EmployeeNumber ?? "",
+            ["Department"] = department ?? "",
+            ["JobTitle"] = jobTitle ?? "",
+            ["LeaveType"] = leaveType ?? "",
+            ["StartDate"] = instance.StartDate?.ToString("yyyy-MM-dd") ?? "",
+            ["EndDate"] = instance.EndDate?.ToString("yyyy-MM-dd") ?? "",
+            ["CompanyName"] = company?.NameAr ?? "",
+            ["CRNumber"] = company?.CommercialRegistration ?? "",
+            ["VATNumber"] = company?.VatNumber ?? "",
+            ["GeneratedDate"] = generatedDate,
+        };
+        var bodyBlocks = string.IsNullOrWhiteSpace(bodyTemplate) ? null : ParseHtmlBlocks(ResolveTokens(bodyTemplate, tokens));
 
         var pdf = Document.Create(doc =>
         {
@@ -119,22 +157,42 @@ public sealed class DocumentRenderer : IDocumentRenderer
 
                 page.Content().PaddingVertical(16).Column(col =>
                 {
-                    col.Spacing(14);
+                    col.Spacing(12);
                     col.Item().AlignCenter().Text(title).FontSize(15).Bold();
-                    col.Item().Text($"رقم الطلب: {instance.RequestNumber}").FontSize(10).FontColor(Colors.Grey.Medium);
 
-                    // Details table
-                    col.Item().Table(table =>
+                    if (bodyBlocks is not null)
                     {
-                        table.ColumnsDefinition(c => { c.RelativeColumn(1); c.RelativeColumn(2); });
-                        foreach (var (k, v) in details)
+                        // Render the admin's template body (token-resolved HTML subset).
+                        foreach (var (kind, text) in bodyBlocks)
                         {
-                            table.Cell().Background(Colors.Grey.Lighten4).Padding(6).Text(k).Bold().FontSize(10);
-                            table.Cell().Padding(6).Text(v).FontSize(10);
+                            if (string.IsNullOrWhiteSpace(text) && kind != "hr") continue;
+                            switch (kind)
+                            {
+                                case "h1": col.Item().Text(text).FontSize(14).Bold(); break;
+                                case "h2": col.Item().Text(text).FontSize(12).Bold(); break;
+                                case "h3": col.Item().Text(text).FontSize(11).Bold(); break;
+                                case "li": col.Item().Text($"•  {text}").FontSize(11); break;
+                                case "hr": col.Item().LineHorizontal(0.5f).LineColor(Colors.Grey.Lighten1); break;
+                                default: col.Item().Text(text).FontSize(11); break;
+                            }
                         }
-                    });
+                    }
+                    else
+                    {
+                        // Fallback: structured details table.
+                        col.Item().Text($"رقم الطلب: {instance.RequestNumber}").FontSize(10).FontColor(Colors.Grey.Medium);
+                        col.Item().Table(table =>
+                        {
+                            table.ColumnsDefinition(c => { c.RelativeColumn(1); c.RelativeColumn(2); });
+                            foreach (var (k, v) in details)
+                            {
+                                table.Cell().Background(Colors.Grey.Lighten4).Padding(6).Text(k).Bold().FontSize(10);
+                                table.Cell().Padding(6).Text(v).FontSize(10);
+                            }
+                        });
+                    }
 
-                    // Approvals
+                    // Approval block (always appended for official documents).
                     if (approvals.Count > 0)
                     {
                         col.Item().PaddingTop(6).Text("سلسلة الموافقات").Bold();
@@ -194,4 +252,41 @@ public sealed class DocumentRenderer : IDocumentRenderer
     {
         "Approved" => "تمت الموافقة", "Rejected" => "مرفوض", "Pending" => "بانتظار", "Skipped" => "تم التخطي", _ => status,
     };
+
+    /// <summary>Replace {{Token.Path}} placeholders with resolved values.</summary>
+    public static string ResolveTokens(string template, IReadOnlyDictionary<string, string> tokens)
+        => System.Text.RegularExpressions.Regex.Replace(template, @"\{\{\s*([\w.]+)\s*\}\}",
+            m => tokens.TryGetValue(m.Groups[1].Value, out var v) ? v : m.Value);
+
+    /// <summary>Parse a token-resolved HTML body into a renderable block sequence (subset).</summary>
+    public static List<(string kind, string text)> ParseHtmlBlocks(string html)
+    {
+        var s = html ?? "";
+        var R = System.Text.RegularExpressions.RegexOptions.Singleline | System.Text.RegularExpressions.RegexOptions.IgnoreCase;
+        string Rep(string input, string pat, string repl) => System.Text.RegularExpressions.Regex.Replace(input, pat, repl, R);
+
+        s = Rep(s, @"<br\s*/?>", "\n");
+        s = Rep(s, @"<hr\s*/?>", "\n@@HR@@\n");
+        s = Rep(s, @"<h1[^>]*>(.*?)</h1>", "\n@@H1@@$1\n");
+        s = Rep(s, @"<h2[^>]*>(.*?)</h2>", "\n@@H2@@$1\n");
+        s = Rep(s, @"<h3[^>]*>(.*?)</h3>", "\n@@H3@@$1\n");
+        s = Rep(s, @"<li[^>]*>(.*?)</li>", "\n@@LI@@$1\n");
+        s = Rep(s, @"</(p|div|tr)>", "\n");
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"<[^>]+>", "", R);          // strip remaining tags
+        s = s.Replace("&nbsp;", " ").Replace("&amp;", "&").Replace("&lt;", "<").Replace("&gt;", ">").Replace("&quot;", "\"");
+
+        var blocks = new List<(string, string)>();
+        foreach (var raw in s.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.Length == 0) continue;
+            if (line.StartsWith("@@HR@@")) { blocks.Add(("hr", "")); continue; }
+            if (line.StartsWith("@@H1@@")) { blocks.Add(("h1", line[6..].Trim())); continue; }
+            if (line.StartsWith("@@H2@@")) { blocks.Add(("h2", line[6..].Trim())); continue; }
+            if (line.StartsWith("@@H3@@")) { blocks.Add(("h3", line[6..].Trim())); continue; }
+            if (line.StartsWith("@@LI@@")) { blocks.Add(("li", line[6..].Trim())); continue; }
+            blocks.Add(("p", line));
+        }
+        return blocks;
+    }
 }

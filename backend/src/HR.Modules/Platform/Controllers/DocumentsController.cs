@@ -13,6 +13,17 @@ namespace HR.Modules.Platform.Controllers;
 [Route("api/platform/documents")]
 public class DocumentsController : BaseApiController
 {
+    /// <summary>Token explorer: the placeholders an admin can insert into a template.</summary>
+    [HttpGet("token-catalog")]
+    [RequirePermission("Platform.Documents.View")]
+    public ActionResult<ApiResponse<List<TokenGroupDto>>> TokenCatalog() => OkResponse(DocumentTokens.Catalog);
+
+    /// <summary>Live preview: resolve a template body's tokens against sample data → HTML.</summary>
+    [HttpPost("preview-html")]
+    [RequirePermission("Platform.Documents.View")]
+    public ActionResult<ApiResponse<string>> PreviewHtml([FromBody] PreviewHtmlRequest req)
+        => OkResponse<string>(Services.Documents.DocumentRenderer.ResolveTokens(req.Body ?? "", DocumentTokens.Sample));
+
     [HttpGet("templates")]
     [RequirePermission("Platform.Documents.View")]
     public async Task<ActionResult<ApiResponse<PaginatedList<DocumentTemplateDto>>>> GetTemplates([FromQuery] GetDocumentTemplatesQuery query, CancellationToken ct)
