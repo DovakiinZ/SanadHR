@@ -22,12 +22,13 @@ public sealed class RequestEngine : IRequestEngine
     private readonly ICurrentUserService _user;
     private readonly ITimelineEngine _timeline;
     private readonly IAuditEngine _audit;
+    private readonly ILeaveService _leave;
 
     private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
 
-    public RequestEngine(ApplicationDbContext db, ICurrentUserService user, ITimelineEngine timeline, IAuditEngine audit)
+    public RequestEngine(ApplicationDbContext db, ICurrentUserService user, ITimelineEngine timeline, IAuditEngine audit, ILeaveService leave)
     {
-        _db = db; _user = user; _timeline = timeline; _audit = audit;
+        _db = db; _user = user; _timeline = timeline; _audit = audit; _leave = leave;
     }
 
     // ── Submit ────────────────────────────────────────────────────────────────
@@ -79,14 +80,29 @@ public sealed class RequestEngine : IRequestEngine
             FormSubmissionId = submission.Id,
             Status = RequestStatus.Submitted,
             SubmittedAt = DateTime.UtcNow,
-            LeaveTypeId = type.LeaveTypeId,
         };
-        if (type.LeaveTypeId is not null)
+
+        // Leave requests are generic: the sub-type is the selected LeaveType (object ref),
+        // and that type's settings (rules) drive validation + impacts.
+        var isLeave = type.ImpactMapping?.AffectsLeaveBalance == true;
+        if (isLeave)
         {
+            var leaveTypeId = ParseGuid(Val(values, RequestFieldCodes.LeaveType))
+                ?? throw Invalid("leaveType", "يرجى اختيار نوع الإجازة");
+            instance.LeaveTypeId = leaveTypeId;
             instance.StartDate = ParseDate(Val(values, RequestFieldCodes.StartDate));
             instance.EndDate = ParseDate(Val(values, RequestFieldCodes.EndDate));
-            if (instance.StartDate is { } sd && instance.EndDate is { } ed && ed >= sd)
-                instance.DaysCount = (decimal)((ed.Date - sd.Date).Days + 1);
+
+            var leaveItem = await _db.MasterDataItems.FirstOrDefaultAsync(m => m.Id == leaveTypeId, ct)
+                ?? throw Invalid("leaveType", "نوع الإجازة غير موجود");
+            var rules = _leave.GetRules(leaveItem.MetadataJson);
+            if (instance.StartDate is { } sd && instance.EndDate is { } ed)
+                instance.DaysCount = _leave.ComputeDays(sd, ed, rules);
+
+            var hasAttachment = values.Any(v => v.FieldCode.Equals(RequestFieldCodes.Attachment, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(v.FileUrl));
+            var preview = await _leave.PreviewAsync(employee.Id, leaveTypeId, instance.StartDate, instance.EndDate, hasAttachment, ct);
+            if (!preview.IsValid)
+                throw Invalid("leave", string.Join(" • ", preview.Errors));
         }
         _db.RequestInstances.Add(instance);
 
@@ -216,20 +232,30 @@ public sealed class RequestEngine : IRequestEngine
         var impact = type.ImpactMapping;
         if (impact is null) return;
 
-        if (impact.AffectsLeaveBalance && instance.LeaveTypeId is { } leaveTypeId && instance.DaysCount is { } days && days > 0)
+        // Load the selected leave type's rules (object-driven; never hardcoded).
+        LeaveRules? rules = null;
+        if (instance.LeaveTypeId is { } ltId)
+        {
+            var leaveItem = await _db.MasterDataItems.FirstOrDefaultAsync(m => m.Id == ltId, ct);
+            rules = _leave.GetRules(leaveItem?.MetadataJson);
+        }
+
+        // Deduct balance only for PAID leave (unpaid leave still marks attendance below).
+        if (impact.AffectsLeaveBalance && instance.LeaveTypeId is { } leaveTypeId && instance.DaysCount is { } days && days > 0 && (rules?.Paid ?? true))
         {
             var year = (instance.StartDate ?? DateTime.UtcNow).Year;
             var bal = await _db.LeaveBalances.FirstOrDefaultAsync(
                 b => b.EmployeeId == employee.Id && b.LeaveTypeId == leaveTypeId && b.Year == year, ct);
             if (bal is null)
             {
-                bal = new LeaveBalance { EmployeeId = employee.Id, LeaveTypeId = leaveTypeId, Year = year, EntitledDays = 30m, UsedDays = 0m };
+                bal = new LeaveBalance { EmployeeId = employee.Id, LeaveTypeId = leaveTypeId, Year = year, EntitledDays = (decimal)(rules?.AnnualBalance ?? 30), UsedDays = 0m };
                 _db.LeaveBalances.Add(bal);
             }
             bal.UsedDays += days;
         }
 
-        if (impact.AffectsAttendance && instance.StartDate is { } start && instance.EndDate is { } end && end >= start)
+        var marksAttendance = impact.AffectsAttendance && (rules?.AffectsAttendance ?? true);
+        if (marksAttendance && instance.StartDate is { } start && instance.EndDate is { } end && end >= start)
         {
             for (var d = start.Date; d <= end.Date; d = d.AddDays(1))
             {
@@ -440,6 +466,9 @@ public sealed class RequestEngine : IRequestEngine
     private static DateTime? ParseDate(string? raw)
         => DateTime.TryParse(raw, null, System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal, out var d)
             ? DateTime.SpecifyKind(d, DateTimeKind.Utc) : null;
+
+    private static Guid? ParseGuid(string? raw)
+        => Guid.TryParse(raw, out var g) ? g : null;
 
     private static ValidationException Invalid(string field, string message)
         => new(new[] { new ValidationFailure(field, message) });

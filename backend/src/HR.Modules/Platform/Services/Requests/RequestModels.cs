@@ -32,4 +32,6 @@ public static class RequestFieldCodes
     public const string Amount = "amount";
     public const string Reason = "reason";
     public const string Notes = "notes";
+    public const string LeaveType = "leaveType";   // generic sub-type: selected LeaveType master-data id
+    public const string Attachment = "attachment";
 }

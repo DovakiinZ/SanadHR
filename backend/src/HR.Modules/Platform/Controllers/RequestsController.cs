@@ -23,10 +23,32 @@ public class RequestsController : BaseApiController
     private readonly IRequestEngine _engine;
     private readonly ApplicationDbContext _db;
     private readonly ICurrentUserService _user;
+    private readonly ILeaveService _leave;
 
-    public RequestsController(IRequestEngine engine, ApplicationDbContext db, ICurrentUserService user)
+    public RequestsController(IRequestEngine engine, ApplicationDbContext db, ICurrentUserService user, ILeaveService leave)
     {
-        _engine = engine; _db = db; _user = user;
+        _engine = engine; _db = db; _user = user; _leave = leave;
+    }
+
+    // ── Leave (generic sub-typed request) ───────────────────────────────────────
+
+    /// <summary>Leave types from settings, with their rules and the employee's live balance.</summary>
+    [HttpGet("leave-types")]
+    public async Task<ActionResult<ApiResponse<List<LeaveTypeInfo>>>> GetLeaveTypes(CancellationToken ct)
+    {
+        var empId = await _db.Employees.Where(e => e.UserId == _user.UserId).Select(e => (Guid?)e.Id).FirstOrDefaultAsync(ct);
+        if (empId is null) return OkResponse(new List<LeaveTypeInfo>());
+        return OkResponse(await _leave.GetLeaveTypesAsync(empId.Value, ct));
+    }
+
+    /// <summary>Live preview for the leave wizard: days, balance before/after, next approver, validation.</summary>
+    [HttpPost("leave/preview")]
+    public async Task<ActionResult<ApiResponse<LeavePreview>>> LeavePreview([FromBody] LeavePreviewBody body, CancellationToken ct)
+    {
+        var empId = await _db.Employees.Where(e => e.UserId == _user.UserId).Select(e => (Guid?)e.Id).FirstOrDefaultAsync(ct);
+        if (empId is null) return OkResponse(new LeavePreview { Errors = { "لا يوجد ملف موظف مرتبط بحسابك" } });
+        DateTime? Parse(string? s) => DateTime.TryParse(s, null, System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal, out var d) ? DateTime.SpecifyKind(d, DateTimeKind.Utc) : null;
+        return OkResponse(await _leave.PreviewAsync(empId.Value, body.LeaveTypeId, Parse(body.StartDate), Parse(body.EndDate), body.HasAttachment, ct));
     }
 
     /// <summary>Idempotently provision the built-in system requests for this tenant.</summary>
@@ -74,12 +96,13 @@ public class RequestsController : BaseApiController
                 Placeholder = f.Placeholder, Options = f.Options, SortOrder = f.SortOrder,
             }).ToListAsync(ct);
 
+        var isLeave = await _db.RequestImpactMappings.AnyAsync(m => m.RequestTypeId == id && m.AffectsLeaveBalance, ct);
         return OkResponse(new RequestTypeDetailDto
         {
             Id = t.Id, Code = t.Code, NameAr = t.NameAr, NameEn = t.NameEn,
             DescriptionAr = t.DescriptionAr, DescriptionEn = t.DescriptionEn,
             Kind = t.Kind.ToString(), FormDefinitionId = t.FormDefinitionId,
-            Icon = t.Icon, Color = t.Color, Fields = fields,
+            Icon = t.Icon, Color = t.Color, Fields = fields, IsLeaveRequest = isLeave,
         });
     }
 
@@ -211,7 +234,16 @@ public sealed class RequestTypeDetailDto
     public Guid FormDefinitionId { get; set; }
     public string? Icon { get; set; }
     public string? Color { get; set; }
+    public bool IsLeaveRequest { get; set; }
     public List<RequestFieldDto> Fields { get; set; } = new();
+}
+
+public sealed class LeavePreviewBody
+{
+    public Guid LeaveTypeId { get; set; }
+    public string? StartDate { get; set; }
+    public string? EndDate { get; set; }
+    public bool HasAttachment { get; set; }
 }
 
 public sealed class RequestFieldDto

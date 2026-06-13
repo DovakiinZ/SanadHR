@@ -29,9 +29,9 @@ public sealed class RequestSeeder : IRequestSeeder
         var catLetters = await EnsureCategory("LETTERS", "الخطابات والشهادات", "Letters & Certificates", ct);
         var catHr = await EnsureCategory("HR", "الموارد البشرية والشخصية", "HR & Personal", ct);
 
-        var ltAnnual = await EnsureLeaveType("ANNUAL", "إجازة سنوية", "Annual Leave", ct);
-        var ltSick = await EnsureLeaveType("SICK", "إجازة مرضية", "Sick Leave", ct);
-        var ltEmergency = await EnsureLeaveType("EMERGENCY", "إجازة طارئة", "Emergency Leave", ct);
+        await EnsureLeaveTypesAsync(ct);
+        await EnsureExpenseCategoriesAsync(ct);
+        await EnsureLoanTypesAsync(ct);
 
         // 1) Print templates (official documents — full PDF rendering arrives with QuestPDF).
         var tplLeave = await EnsureDocTemplate("DOC_LEAVE_APPROVAL", "Leave Approval", "موافقة إجازة", LeaveApprovalHtml, ct);
@@ -49,17 +49,11 @@ public sealed class RequestSeeder : IRequestSeeder
         var wfHr = await EnsureWorkflow("WF_REQ_HR", "HR Approval", "موافقة الموارد البشرية",
             new[] { Step(ApproverType.HrManager, "الموارد البشرية", "HR") }, ct);
 
-        // 3) System requests, each fully provisioned.
+        // 3) System requests, each fully provisioned. The sub-type is a FIELD (object ref),
+        //    not a separate request — one Leave Request, leave type selected inside.
         int created = 0;
-        created += await EnsureRequest("ANNUAL_LEAVE", "إجازة سنوية", "Annual Leave", catTimeOff, ltAnnual, wfManager, tplLeave,
-            LeaveForm("FORM_ANNUAL_LEAVE", "نموذج إجازة سنوية", "Annual Leave Form"),
-            Impact(leave: true, attendance: true, document: true), "Plane", "#34D399", ct);
-        created += await EnsureRequest("SICK_LEAVE", "إجازة مرضية", "Sick Leave", catTimeOff, ltSick, wfManager, tplLeave,
-            LeaveForm("FORM_SICK_LEAVE", "نموذج إجازة مرضية", "Sick Leave Form", attachment: true),
-            Impact(leave: true, attendance: true, document: true), "Thermometer", "#F87171", ct);
-        created += await EnsureRequest("EMERGENCY_LEAVE", "إجازة طارئة", "Emergency Leave", catTimeOff, ltEmergency, wfManager, tplLeave,
-            LeaveForm("FORM_EMERGENCY_LEAVE", "نموذج إجازة طارئة", "Emergency Leave Form"),
-            Impact(leave: true, attendance: true, document: true), "Siren", "#FB923C", ct);
+        created += await EnsureRequest("LEAVE_REQUEST", "طلب إجازة", "Leave Request", catTimeOff, null, wfManager, tplLeave,
+            LeaveRequestForm(), Impact(leave: true, attendance: true, document: true), "CalendarDays", "#34D399", ct);
         created += await EnsureRequest("SALARY_CERTIFICATE", "شهادة راتب", "Salary Certificate", catLetters, null, wfHr, tplSalaryCert,
             SalaryCertificateForm(), Impact(document: true), "FileText", "#60A5FA", ct);
         created += await EnsureRequest("SALARY_ADVANCE", "سلفة راتب", "Salary Advance", catFinance, null, wfMgrFinPay, null,
@@ -76,16 +70,23 @@ public sealed class RequestSeeder : IRequestSeeder
         created += await EnsureRequest("EMPLOYEE_DATA_UPDATE", "تحديث بيانات", "Employee Data Update", catHr, null, wfHr, null,
             DataUpdateForm(), Impact(), "UserCog", "#A3E635", ct);
 
+        // Retire the old per-leave-type requests (superseded by the single Leave Request).
+        await DeactivateRequestsAsync(new[] { "ANNUAL_LEAVE", "SICK_LEAVE", "EMERGENCY_LEAVE" }, ct);
+
         await _db.SaveChangesAsync(ct);
         return created;
+    }
+
+    private async Task DeactivateRequestsAsync(string[] codes, CancellationToken ct)
+    {
+        var stale = await _db.RequestTypes.Where(t => codes.Contains(t.Code) && t.IsActive).ToListAsync(ct);
+        foreach (var t in stale) t.IsActive = false;
     }
 
     // ── Ensure helpers ──────────────────────────────────────────────────────────
 
     private async Task<Guid> EnsureCategory(string code, string ar, string en, CancellationToken ct)
         => await EnsureMasterData(MasterDataObjectType.RequestCategory, code, ar, en, ct);
-    private async Task<Guid> EnsureLeaveType(string code, string ar, string en, CancellationToken ct)
-        => await EnsureMasterData(MasterDataObjectType.LeaveType, code, ar, en, ct);
 
     private async Task<Guid> EnsureMasterData(string objectType, string code, string ar, string en, CancellationToken ct)
     {
@@ -96,6 +97,60 @@ public sealed class RequestSeeder : IRequestSeeder
         await _db.SaveChangesAsync(ct);
         return item.Id;
     }
+
+    /// <summary>Upsert a master-data item, backfilling rules MetadataJson when absent.</summary>
+    private async Task EnsureMasterDataWithMeta(string objectType, string code, string ar, string en, string metaJson, CancellationToken ct)
+    {
+        var existing = await _db.MasterDataItems.FirstOrDefaultAsync(m => m.ObjectType == objectType && m.Code == code, ct);
+        if (existing is null)
+            _db.MasterDataItems.Add(new MasterDataItem { ObjectType = objectType, Code = code, NameAr = ar, NameEn = en, MetadataJson = metaJson, IsSystemDefault = true, IsActive = true });
+        else if (string.IsNullOrWhiteSpace(existing.MetadataJson))
+            existing.MetadataJson = metaJson; // backfill rules on items seeded before rules existed
+        await _db.SaveChangesAsync(ct);
+    }
+
+    // 8 leave types, each carrying its own rules (paid/percentage/maxDays/attachment/...).
+    private async Task EnsureLeaveTypesAsync(CancellationToken ct)
+    {
+        var lt = MasterDataObjectType.LeaveType;
+        await EnsureMasterDataWithMeta(lt, "ANNUAL", "إجازة سنوية", "Annual Leave", LeaveRulesJson(maxDays: 30, annual: 30), ct);
+        await EnsureMasterDataWithMeta(lt, "SICK", "إجازة مرضية", "Sick Leave", LeaveRulesJson(maxDays: 120, annual: 120, attach: true, payroll: true), ct);
+        await EnsureMasterDataWithMeta(lt, "EMERGENCY", "إجازة طارئة", "Emergency Leave", LeaveRulesJson(maxDays: 5, annual: 5), ct);
+        await EnsureMasterDataWithMeta(lt, "EXAM", "إجازة اختبارات", "Exam Leave", LeaveRulesJson(maxDays: 10, annual: 10, attach: true), ct);
+        await EnsureMasterDataWithMeta(lt, "UNPAID", "إجازة بدون راتب", "Unpaid Leave", LeaveRulesJson(paid: false, pct: 0, maxDays: 90, annual: 0, payroll: true), ct);
+        await EnsureMasterDataWithMeta(lt, "MARRIAGE", "إجازة زواج", "Marriage Leave", LeaveRulesJson(maxDays: 5, annual: 5), ct);
+        await EnsureMasterDataWithMeta(lt, "DEATH", "إجازة وفاة", "Bereavement Leave", LeaveRulesJson(maxDays: 5, annual: 5), ct);
+        await EnsureMasterDataWithMeta(lt, "HAJJ", "إجازة حج", "Hajj Leave", LeaveRulesJson(maxDays: 10, annual: 10), ct);
+    }
+
+    private async Task EnsureExpenseCategoriesAsync(CancellationToken ct)
+    {
+        var t = MasterDataObjectType.ExpenseCategory;
+        await EnsureMasterData(t, "TRAVEL", "سفر", "Travel", ct);
+        await EnsureMasterData(t, "MEALS", "وجبات", "Meals", ct);
+        await EnsureMasterData(t, "ACCOMMODATION", "إقامة", "Accommodation", ct);
+        await EnsureMasterData(t, "SUPPLIES", "مستلزمات", "Supplies", ct);
+        await EnsureMasterData(t, "OTHER", "أخرى", "Other", ct);
+    }
+
+    private async Task EnsureLoanTypesAsync(CancellationToken ct)
+    {
+        var t = MasterDataObjectType.LoanType;
+        await EnsureMasterData(t, "PERSONAL", "قرض شخصي", "Personal Loan", ct);
+        await EnsureMasterData(t, "EMERGENCY", "قرض طارئ", "Emergency Loan", ct);
+        await EnsureMasterData(t, "HOUSING", "قرض سكني", "Housing Loan", ct);
+    }
+
+    private static string LeaveRulesJson(bool paid = true, double pct = 100, double maxDays = 30, double annual = 30,
+        bool attach = false, bool payroll = false, bool attendance = true, bool weekends = false)
+        => JsonSerializer.Serialize(new LeaveRules
+        {
+            Paid = paid, PaidPercentage = pct, MaxDays = maxDays, AnnualBalance = annual,
+            RequiresAttachment = attach, AffectsPayroll = payroll, AffectsAttendance = attendance, CountWeekends = weekends,
+        }, Json);
+
+    /// <summary>Field options descriptor that tells the UI to load choices live from master data.</summary>
+    private static string Lookup(string objectType) => $"{{\"lookup\":\"{objectType}\"}}";
 
     private async Task<Guid> EnsureDocTemplate(string code, string en, string ar, string html, CancellationToken ct)
     {
@@ -174,17 +229,15 @@ public sealed class RequestSeeder : IRequestSeeder
 
     // ── Form definitions (system fields use canonical codes the engine understands) ──
 
-    private static FormSpec LeaveForm(string code, string ar, string en, bool attachment = false)
+    // One generic Leave Request form — the leave type is a field, sourced live from settings.
+    private static FormSpec LeaveRequestForm() => new("FORM_LEAVE_REQUEST", "نموذج طلب إجازة", "Leave Request Form", new()
     {
-        var fields = new List<FieldSpec>
-        {
-            F("startDate", "تاريخ البداية", "Start Date", FieldType.Date, true),
-            F("endDate", "تاريخ النهاية", "End Date", FieldType.Date, true),
-            F("notes", "ملاحظات", "Notes", FieldType.TextArea, false),
-        };
-        if (attachment) fields.Add(F("attachment", "مرفق", "Attachment", FieldType.File, false));
-        return new FormSpec(code, ar, en, fields);
-    }
+        F("leaveType", "نوع الإجازة", "Leave Type", FieldType.Dropdown, true, options: Lookup(MasterDataObjectType.LeaveType)),
+        F("startDate", "تاريخ البداية", "Start Date", FieldType.Date, true),
+        F("endDate", "تاريخ النهاية", "End Date", FieldType.Date, true),
+        F("attachment", "مرفق", "Attachment", FieldType.File, false),
+        F("notes", "ملاحظات", "Notes", FieldType.TextArea, false),
+    });
 
     private static FormSpec SalaryCertificateForm() => new("FORM_SALARY_CERTIFICATE", "نموذج شهادة راتب", "Salary Certificate Form", new()
     {
@@ -200,6 +253,7 @@ public sealed class RequestSeeder : IRequestSeeder
 
     private static FormSpec LoanForm() => new("FORM_LOAN_REQUEST", "نموذج طلب قرض", "Loan Request Form", new()
     {
+        F("loanType", "نوع القرض", "Loan Type", FieldType.Dropdown, true, options: Lookup(MasterDataObjectType.LoanType)),
         F("amount", "المبلغ", "Amount", FieldType.Currency, true),
         F("installmentMonths", "عدد الأشهر", "Installment Months", FieldType.Number, true),
         F("reason", "السبب", "Reason", FieldType.TextArea, true),
@@ -221,6 +275,7 @@ public sealed class RequestSeeder : IRequestSeeder
 
     private static FormSpec ExpenseForm() => new("FORM_EXPENSE_CLAIM", "نموذج مطالبة مصروف", "Expense Claim Form", new()
     {
+        F("expenseCategory", "فئة المصروف", "Expense Category", FieldType.Dropdown, true, options: Lookup(MasterDataObjectType.ExpenseCategory)),
         F("amount", "المبلغ", "Amount", FieldType.Currency, true),
         F("description", "الوصف", "Description", FieldType.TextArea, true),
         F("receipt", "الإيصال", "Receipt", FieldType.File, false),

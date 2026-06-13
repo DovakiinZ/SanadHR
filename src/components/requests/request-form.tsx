@@ -1,11 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2, Upload, Check } from "lucide-react";
 import { toast } from "sonner";
 import { uploadFile } from "@/lib/api/files";
+import { getMasterDataItems } from "@/lib/api/master-data";
 import { ApiError } from "@/lib/api-client";
 import { RequestField, RequestTypeDetail, RequestValue, submitRequest } from "@/lib/api/request-center";
+
+type Option = { value: string; label: string };
+
+// A field whose options is {"lookup":"ObjectType"} loads its choices live from master data.
+function lookupObjectType(options?: string | null): string | null {
+  if (!options) return null;
+  try { const p = JSON.parse(options); return p?.lookup ?? null; } catch { return null; }
+}
 
 interface RequestFormProps {
   type: RequestTypeDetail;
@@ -18,8 +27,20 @@ export function RequestForm({ type, onSubmitted, onCancel }: RequestFormProps) {
   const [files, setFiles] = useState<Record<string, string>>({}); // fieldCode → fileUrl
   const [uploading, setUploading] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [lookups, setLookups] = useState<Record<string, Option[]>>({});
 
   const set = (code: string, v: string) => setValues((p) => ({ ...p, [code]: v }));
+
+  // Resolve lookup dropdowns (e.g. expense category, loan type) from master data.
+  useEffect(() => {
+    type.fields.forEach((f) => {
+      const objType = lookupObjectType(f.options);
+      if (!objType) return;
+      getMasterDataItems(objType)
+        .then((items) => setLookups((p) => ({ ...p, [f.code]: items.map((i) => ({ value: i.id, label: i.nameAr || i.nameEn || i.code })) })))
+        .catch(() => {});
+    });
+  }, [type]);
 
   const onFile = async (field: RequestField, file?: File) => {
     if (!file) return;
@@ -68,7 +89,7 @@ export function RequestForm({ type, onSubmitted, onCancel }: RequestFormProps) {
             <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
               {f.nameAr}{f.isRequired && <span className="text-destructive"> *</span>}
             </label>
-            {renderField(f, values[f.code] ?? "", set, files[f.code], onFile, uploading === f.code)}
+            {renderField(f, values[f.code] ?? "", set, files[f.code], onFile, uploading === f.code, lookups[f.code])}
           </div>
         ))}
         {type.fields.length === 0 && <p className="text-sm text-muted-foreground">لا توجد حقول في هذا النموذج.</p>}
@@ -92,6 +113,7 @@ function renderField(
   fileUrl: string | undefined,
   onFile: (f: RequestField, file?: File) => void,
   uploading: boolean,
+  lookupOptions?: Option[],
 ) {
   const cls = "h-10 w-full border border-border bg-secondary px-3 text-sm";
   switch (f.fieldType) {
@@ -109,13 +131,15 @@ function renderField(
       );
     case "TextArea":
       return <textarea value={value} onChange={(e) => set(f.code, e.target.value)} placeholder={f.placeholder ?? ""} rows={3} className="w-full border border-border bg-secondary px-3 py-2 text-sm" />;
-    case "Dropdown": case "MultiSelect":
+    case "Dropdown": case "MultiSelect": {
+      const opts = lookupOptions ?? parseOptions(f.options);
       return (
         <select value={value} onChange={(e) => set(f.code, e.target.value)} className={cls}>
           <option value="">— اختر —</option>
-          {parseOptions(f.options).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          {opts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       );
+    }
     case "File": case "Image":
       return (
         <div className="flex items-center gap-2">

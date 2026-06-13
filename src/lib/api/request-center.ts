@@ -32,7 +32,47 @@ export interface RequestField {
 
 export interface RequestTypeDetail extends RequestType {
   formDefinitionId: string;
+  isLeaveRequest: boolean;
   fields: RequestField[];
+}
+
+export interface LeaveRules {
+  paid: boolean;
+  paidPercentage: number;
+  maxDays: number;
+  annualBalance: number;
+  requiresAttachment: boolean;
+  affectsPayroll: boolean;
+  affectsAttendance: boolean;
+  countWeekends: boolean;
+  countHolidays: boolean;
+}
+
+export interface LeaveTypeInfo {
+  id: string;
+  code: string;
+  nameAr: string;
+  nameEn: string;
+  rules: LeaveRules;
+  entitledDays: number;
+  usedDays: number;
+  remainingDays: number;
+}
+
+export interface LeavePreview {
+  leaveTypeId: string;
+  days: number;
+  balanceBefore: number;
+  balanceAfter: number;
+  requiresAttachment: boolean;
+  affectsPayroll: boolean;
+  affectsAttendance: boolean;
+  paidPercentage: number;
+  paid: boolean;
+  nextApproverAr?: string | null;
+  nextApproverEn?: string | null;
+  isValid: boolean;
+  errors: string[];
 }
 
 export interface RequestApprovalStep {
@@ -105,6 +145,16 @@ export const cancelRequest = (id: string) =>
 
 export const seedSystemRequests = () =>
   apiFetch<number>("/api/requests/seed-system", { method: "POST" });
+
+// ── Leave (generic sub-typed request) ──
+export const getLeaveTypes = () =>
+  apiFetch<LeaveTypeInfo[]>("/api/requests/leave-types");
+
+export const previewLeave = (leaveTypeId: string, startDate?: string, endDate?: string, hasAttachment = false) =>
+  apiFetch<LeavePreview>("/api/requests/leave/preview", {
+    method: "POST",
+    body: { leaveTypeId, startDate, endDate, hasAttachment },
+  });
 
 // ── helpers ──
 export function requestStatusLabel(status: string): string {
