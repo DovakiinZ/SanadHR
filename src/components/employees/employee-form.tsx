@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Loader2, Upload, User } from "lucide-react";
@@ -14,6 +14,7 @@ import {
 import { getLookup, lookupLabel, LookupItem } from "@/lib/api/lookups";
 import { getDepartments, getBranches, OrgOption, orgLabel } from "@/lib/api/org";
 import { uploadFile, fileUrl } from "@/lib/api/files";
+import { transliterateArabic } from "@/lib/transliterate";
 import { Employee } from "@/types";
 
 function notifyError(err: unknown, fallback: string) {
@@ -140,6 +141,20 @@ export function EmployeeForm({ mode = "create", employeeId, initial }: Props) {
 
   const set = <K extends keyof EmployeeInput>(k: K, v: EmployeeInput[K]) => setForm((f) => ({ ...f, [k]: v }));
 
+  // Auto-fill the English name from the Arabic one (transliteration) until the user edits
+  // the English field. In edit mode, pre-existing English names are treated as user-set so
+  // we never overwrite them.
+  const enTouched = useRef({
+    first: !!initial?.firstName,
+    last: !!initial?.lastName,
+  });
+  const setFirstNameAr = (v: string) =>
+    setForm((f) => ({ ...f, firstNameAr: v, ...(enTouched.current.first ? {} : { firstName: transliterateArabic(v) }) }));
+  const setLastNameAr = (v: string) =>
+    setForm((f) => ({ ...f, lastNameAr: v, ...(enTouched.current.last ? {} : { lastName: transliterateArabic(v) }) }));
+  const setFirstNameEn = (v: string) => { enTouched.current.first = true; set("firstName", v); };
+  const setLastNameEn = (v: string) => { enTouched.current.last = true; set("lastName", v); };
+
   const paymentCode = useMemo(
     () => paymentMethods.find((p) => p.id === form.paymentMethodId)?.code,
     [paymentMethods, form.paymentMethodId]
@@ -221,15 +236,15 @@ export function EmployeeForm({ mode = "create", employeeId, initial }: Props) {
           </label>
           {photoSrc && <button type="button" onClick={() => set("photoUrl", "")} className="text-xs text-destructive hover:underline">إزالة</button>}
         </div>
-        <Field label="الاسم الأول (عربي) *"><Input value={form.firstNameAr} onChange={(e) => set("firstNameAr", e.target.value)} className="bg-secondary border-border" /></Field>
-        <Field label="اسم العائلة (عربي) *"><Input value={form.lastNameAr} onChange={(e) => set("lastNameAr", e.target.value)} className="bg-secondary border-border" /></Field>
+        <Field label="الاسم الأول (عربي) *"><Input value={form.firstNameAr} onChange={(e) => setFirstNameAr(e.target.value)} className="bg-secondary border-border" /></Field>
+        <Field label="اسم العائلة (عربي) *"><Input value={form.lastNameAr} onChange={(e) => setLastNameAr(e.target.value)} className="bg-secondary border-border" /></Field>
         <Field label="الجنس">
           <select value={form.gender} onChange={(e) => set("gender", e.target.value)} className={selectClass}>
             <option value="ذكر">ذكر</option><option value="أنثى">أنثى</option>
           </select>
         </Field>
-        <Field label="الاسم الأول (إنجليزي)"><Input value={form.firstName} onChange={(e) => set("firstName", e.target.value)} className="bg-secondary border-border" /></Field>
-        <Field label="اسم العائلة (إنجليزي)"><Input value={form.lastName} onChange={(e) => set("lastName", e.target.value)} className="bg-secondary border-border" /></Field>
+        <Field label="الاسم الأول (إنجليزي)"><Input value={form.firstName} onChange={(e) => setFirstNameEn(e.target.value)} className="bg-secondary border-border" /></Field>
+        <Field label="اسم العائلة (إنجليزي)"><Input value={form.lastName} onChange={(e) => setLastNameEn(e.target.value)} className="bg-secondary border-border" /></Field>
         <Field label="تاريخ الميلاد *"><Input type="date" value={form.dateOfBirth} onChange={(e) => set("dateOfBirth", e.target.value)} className="bg-secondary border-border" /></Field>
       </Section>
 
