@@ -17,6 +17,7 @@ import {
   requestStatusColor, requestStatusLabel,
 } from "@/lib/api/request-center";
 import { getEmployeeRequests, getEmployeeTimeline, TimelineEvent } from "@/lib/api/employee-profile";
+import { EmployeeDocuments } from "./employee-documents";
 
 interface Props { employee: ApiEmployee }
 
@@ -233,14 +234,19 @@ export function EmployeeProfile({ employee: e }: Props) {
           ))}
         </TabsContent>
 
-        <TabsContent value="documents" className="mt-4 space-y-2">
-          {requests.filter((r) => r.generatedDocumentId).length === 0 ? <Empty text="لا توجد مستندات صادرة" /> :
-            requests.filter((r) => r.generatedDocumentId).map((r) => (
-              <button key={r.id} onClick={() => downloadRequestDocument(r.id, `${r.requestNumber}.pdf`).catch(() => {})} className="flex w-full items-center justify-between border border-border bg-card px-4 py-3 text-right hover:bg-muted/40">
-                <span className="inline-flex items-center gap-2"><FileText className="h-4 w-4 text-primary" /> {r.requestTypeNameAr} — {r.requestNumber}</span>
-                <Download className="h-4 w-4 text-muted-foreground" />
-              </button>
-            ))}
+        <TabsContent value="documents" className="mt-4 space-y-6">
+          <EmployeeDocuments employeeId={e.id} canWrite={canEdit} />
+
+          <div className="space-y-2">
+            <h3 className="text-sm font-bold">المستندات الرسمية الصادرة</h3>
+            {requests.filter((r) => r.generatedDocumentId).length === 0 ? <Empty text="لا توجد مستندات صادرة" /> :
+              requests.filter((r) => r.generatedDocumentId).map((r) => (
+                <button key={r.id} onClick={() => downloadRequestDocument(r.id, `${r.requestNumber}.pdf`).catch(() => {})} className="flex w-full items-center justify-between border border-border bg-card px-4 py-3 text-right hover:bg-muted/40">
+                  <span className="inline-flex items-center gap-2"><FileText className="h-4 w-4 text-primary" /> {r.requestTypeNameAr} — {r.requestNumber}</span>
+                  <Download className="h-4 w-4 text-muted-foreground" />
+                </button>
+              ))}
+          </div>
         </TabsContent>
 
         <TabsContent value="timeline" className="mt-4">

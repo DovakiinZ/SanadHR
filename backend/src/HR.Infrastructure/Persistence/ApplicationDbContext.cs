@@ -206,6 +206,9 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<HR.Domain.Engines.Loans.Loan> Loans => Set<HR.Domain.Engines.Loans.Loan>();
     public DbSet<HR.Domain.Engines.Loans.LoanInstallment> LoanInstallments => Set<HR.Domain.Engines.Loans.LoanInstallment>();
 
+    // Employee personnel documents (ID/Iqama/passport/contract/… with optional expiry)
+    public DbSet<HR.Domain.Engines.Documents.EmployeeDocument> EmployeeDocuments => Set<HR.Domain.Engines.Documents.EmployeeDocument>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
