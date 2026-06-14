@@ -2,12 +2,11 @@
 
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Loader2, Pencil } from "lucide-react";
+import { ArrowRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { EmployeeProfile } from "@/components/employees/employee-profile";
 import { getEmployeeRaw, ApiEmployee } from "@/lib/api/employees";
 import { ApiError } from "@/lib/api-client";
-import { usePermissions } from "@/lib/permissions";
 
 export default function EmployeeProfilePage({
   params,
@@ -15,7 +14,6 @@ export default function EmployeeProfilePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const { has } = usePermissions();
   const [employee, setEmployee] = useState<ApiEmployee | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -77,15 +75,6 @@ export default function EmployeeProfilePage({
           <span className="text-muted-foreground">/</span>
           <span>{employee.fullNameAr || employee.fullName}</span>
         </div>
-        {has("Employees.Edit") && (
-          <Link
-            href={`/employees/${id}/edit`}
-            className="inline-flex items-center gap-2 h-9 px-4 border border-border bg-background text-sm font-medium hover:bg-muted transition-colors"
-          >
-            <Pencil className="h-4 w-4" />
-            تعديل
-          </Link>
-        )}
       </div>
 
       <EmployeeProfile employee={employee} />

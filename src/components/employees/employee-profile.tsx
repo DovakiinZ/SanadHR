@@ -4,7 +4,7 @@ import { type ElementType, type ReactNode, useEffect, useMemo, useState } from "
 import Link from "next/link";
 import {
   Banknote, Briefcase, Building, CalendarDays, ClipboardList, Download, FileText, GitBranch,
-  Printer, Send, TrendingUp, Users, Wallet,
+  Pencil, Printer, Send, TrendingUp, Users, Wallet,
 } from "lucide-react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -33,6 +33,7 @@ function years(hireDate?: string): string {
 export function EmployeeProfile({ employee: e }: Props) {
   const { hasAny } = usePermissions();
   const canSeeComp = hasAny("Payroll.View", "Payroll.Edit", "Employees.Edit", "Employees.Create");
+  const canEdit = hasAny("Employees.Edit");
 
   const [balances, setBalances] = useState<LeaveTypeInfo[]>([]);
   const [requests, setRequests] = useState<RequestInstance[]>([]);
@@ -107,7 +108,7 @@ export function EmployeeProfile({ employee: e }: Props) {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Link href={`/employees/${e.id}/edit`} className="inline-flex h-9 items-center gap-2 border border-border px-3 text-sm hover:bg-muted"><Briefcase className="h-4 w-4" /> تعديل</Link>
+            {canEdit && <Link href={`/employees/${e.id}/edit`} className="inline-flex h-9 items-center gap-2 border border-border px-3 text-sm hover:bg-muted"><Pencil className="h-4 w-4" /> تعديل</Link>}
             <button onClick={() => window.print()} className="inline-flex h-9 items-center gap-2 border border-border px-3 text-sm hover:bg-muted"><Printer className="h-4 w-4" /> طباعة</button>
             <Link href="/requests" className="inline-flex h-9 items-center gap-2 bg-primary px-3 text-sm font-bold text-primary-foreground hover:bg-primary/80"><Send className="h-4 w-4" /> طلب</Link>
           </div>
