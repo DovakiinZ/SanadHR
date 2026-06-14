@@ -21,7 +21,10 @@ public sealed class DocumentRenderer : IDocumentRenderer
 {
     private readonly ApplicationDbContext _db;
     private readonly IDocumentTokenResolver _tokens;
-    private const string FontFamily = "Thmanyah Sans";
+    // Tajawal: a modern Arabic+Latin sans that renders reliably under Skia on Linux. The brand
+    // font (Thmanyah Sans) is OTF/CFF and Skia-on-Linux fails to render its Arabic glyphs (".notdef"
+    // boxes), so it can't be used for server-side PDF generation.
+    private const string FontFamily = "Tajawal";
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
 
     static DocumentRenderer()
@@ -29,9 +32,11 @@ public sealed class DocumentRenderer : IDocumentRenderer
         QuestPDF.Settings.License = LicenseType.Community;
         try
         {
+            // Register TTF (not OTF): Skia on Linux fails to render CFF/OTF Arabic glyphs (renders
+            // .notdef "?" boxes), while the same fonts work as TTF. Windows renders both fine.
             var dir = Path.Combine(AppContext.BaseDirectory, "Fonts");
             if (Directory.Exists(dir))
-                foreach (var f in Directory.GetFiles(dir, "*.otf"))
+                foreach (var f in Directory.GetFiles(dir, "*.ttf"))
                     QuestPDF.Drawing.FontManager.RegisterFont(File.OpenRead(f));
         }
         catch { /* fall back to system fonts */ }

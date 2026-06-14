@@ -19,7 +19,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="Fonts\**\*.otf" CopyToOutputDirectory="PreserveNewest" />
+    <!-- TTF is required for correct Arabic rendering on Linux (Skia mis-renders CFF/OTF). -->
+    <None Include="Fonts\**\*.ttf" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
