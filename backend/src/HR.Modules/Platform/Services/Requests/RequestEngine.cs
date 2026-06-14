@@ -324,6 +324,75 @@ public sealed class RequestEngine : IRequestEngine
             }
         }
 
+        // Non-leave targets (expense / loan / attendance punch / correction) read submitted form values.
+        if (impact.CreatesExpenseRecord || impact.CreatesLoanRecord || impact.CreatesAttendancePunch
+            || (impact.AffectsAttendance && instance.LeaveTypeId is null))
+        {
+            var fv = await LoadFormValuesAsync(instance.FormSubmissionId, ct);
+            string? V(string code) => fv.TryGetValue(code, out var x) ? x.Value : null;
+            string? Fl(string code) => fv.TryGetValue(code, out var x) ? x.FileUrl : null;
+            decimal Dec(string code) => decimal.TryParse(V(code), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : 0m;
+            int Int(string code) => int.TryParse(V(code), out var n) ? n : 0;
+
+            // Expense Claim → Expense record (feeds the Expenses page).
+            if (impact.CreatesExpenseRecord)
+                _db.Expenses.Add(new HR.Domain.Engines.Expenses.Expense
+                {
+                    EmployeeId = employee.Id,
+                    ExpenseCategoryId = ParseGuid(V("expenseCategory")),
+                    Amount = Dec("amount"),
+                    Currency = employee.Currency ?? "SAR",
+                    Description = V("description") ?? V("reason"),
+                    ReceiptUrl = Fl("receipt"),
+                    Status = "Approved",
+                    RequestInstanceId = instance.Id,
+                    DecidedAt = DateTime.UtcNow,
+                });
+
+            // Loan / Salary Advance → Loan + monthly installment schedule (payroll deductions).
+            if (impact.CreatesLoanRecord)
+            {
+                var principal = Dec("amount");
+                var months = Math.Max(1, type.Code == "SALARY_ADVANCE" ? 1 : Int("installmentMonths"));
+                var monthly = Math.Round(principal / months, 2);
+                var loan = new HR.Domain.Engines.Loans.Loan
+                {
+                    EmployeeId = employee.Id,
+                    LoanTypeId = ParseGuid(V("loanType")),
+                    Kind = type.Code == "SALARY_ADVANCE" ? "Advance" : "Loan",
+                    Principal = principal, InstallmentMonths = months, MonthlyInstallment = monthly,
+                    Status = "Active", RequestInstanceId = instance.Id, StartDate = DateTime.UtcNow,
+                };
+                var firstMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1);
+                for (int i = 0; i < months; i++)
+                    loan.Installments.Add(new HR.Domain.Engines.Loans.LoanInstallment { DueMonth = firstMonth.AddMonths(i), Amount = monthly, Paid = false });
+                _db.Loans.Add(loan);
+            }
+
+            // Missing Punch → create an attendance record with punch in/out for the date.
+            if (impact.CreatesAttendancePunch)
+            {
+                var date = ParseDate(V("startDate")) ?? ParseDate(V("date")) ?? DateTime.UtcNow.Date;
+                _db.AttendanceRecords.Add(new AttendanceRecord
+                {
+                    EmployeeId = employee.Id,
+                    Date = DateTime.SpecifyKind(date.Date, DateTimeKind.Utc),
+                    Status = AttendanceStatus.Present, Source = "MissingPunch", ReferenceId = instance.Id,
+                    CheckIn = CombineDateTime(date, V("checkIn")), CheckOut = CombineDateTime(date, V("checkOut")),
+                    Notes = V("reason"),
+                });
+            }
+            // Attendance Correction (non-leave) → upsert the day's record + recalc-ready.
+            else if (impact.AffectsAttendance && instance.LeaveTypeId is null)
+            {
+                var date = DateTime.SpecifyKind((ParseDate(V("startDate")) ?? DateTime.UtcNow.Date).Date, DateTimeKind.Utc);
+                var existing = await _db.AttendanceRecords.FirstOrDefaultAsync(a => a.EmployeeId == employee.Id && a.Date == date, ct);
+                if (existing is null)
+                    _db.AttendanceRecords.Add(new AttendanceRecord { EmployeeId = employee.Id, Date = date, Status = AttendanceStatus.Present, Source = "AttendanceCorrection", ReferenceId = instance.Id, Notes = V("reason") });
+                else { existing.Status = AttendanceStatus.Present; existing.Source = "AttendanceCorrection"; existing.Notes = V("reason"); }
+            }
+        }
+
         // Document generation is mapping-driven now (see DocumentGenerationService), fired by the
         // lifecycle trigger points in Submit/Decide — not from the impact engine.
 
@@ -506,6 +575,24 @@ public sealed class RequestEngine : IRequestEngine
 
     private static Guid? ParseGuid(string? raw)
         => Guid.TryParse(raw, out var g) ? g : null;
+
+    /// <summary>Load a submission's values into a fieldCode → (value, fileUrl) map.</summary>
+    private async Task<Dictionary<string, (string? Value, string? FileUrl)>> LoadFormValuesAsync(Guid submissionId, CancellationToken ct)
+    {
+        var vals = await _db.FormSubmissionValues.Where(v => v.FormSubmissionId == submissionId)
+            .Select(v => new { v.FieldCode, v.Value, v.FileUrl }).ToListAsync(ct);
+        return vals.GroupBy(v => v.FieldCode, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => (g.Last().Value, g.Last().FileUrl), StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Combine a date with an "HH:mm" time string into a UTC DateTime (null when no time).</summary>
+    private static DateTime? CombineDateTime(DateTime date, string? time)
+    {
+        if (string.IsNullOrWhiteSpace(time)) return null;
+        if (TimeSpan.TryParse(time, out var t))
+            return DateTime.SpecifyKind(date.Date.Add(t), DateTimeKind.Utc);
+        return null;
+    }
 
     private static ValidationException Invalid(string field, string message)
         => new(new[] { new ValidationFailure(field, message) });

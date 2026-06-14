@@ -73,9 +73,33 @@ public sealed class RequestSeeder : IRequestSeeder
         created += await EnsureRequest("BUSINESS_TRIP", "رحلة عمل", "Business Trip", catHr, null, wfMgrDeptHr, null,
             BusinessTripForm(), Impact(document: false), "Briefcase", "#94A3B8", ct);
         created += await EnsureRequest("EXPENSE_CLAIM", "مطالبة مصروف", "Expense Claim", catFinance, null, wfMgrFin, null,
-            ExpenseForm(), Impact(expenses: true, finance: true), "Receipt", "#F472B6", ct);
+            ExpenseForm(), Impact(expenses: true, expenseRecord: true, finance: true), "Receipt", "#F472B6", ct);
         created += await EnsureRequest("EMPLOYEE_DATA_UPDATE", "تحديث بيانات", "Employee Data Update", catHr, null, wfHr, null,
             DataUpdateForm(), Impact(), "UserCog", "#A3E635", ct);
+
+        // Additional enterprise request types (single Leave Request keeps leave subtypes as a field).
+        created += await EnsureRequest("MISSING_PUNCH", "بصمة ناقصة", "Missing Punch", catTimeOff, null, wfManager, null,
+            MissingPunchForm(), Impact(attendancePunch: true), "Fingerprint", "#22D3EE", ct);
+        created += await EnsureRequest("OVERTIME_REQUEST", "عمل إضافي", "Overtime Request", catTimeOff, null, wfManager, null,
+            OvertimeForm(), Impact(), "Timer", "#FBBF24", ct);
+        created += await EnsureRequest("WORK_FROM_HOME", "عمل عن بُعد", "Work From Home", catTimeOff, null, wfManager, null,
+            DateRangeForm("FORM_WFH", "نموذج عمل عن بُعد", "Work From Home Form"), Impact(), "House", "#34D399", ct);
+        created += await EnsureRequest("RETURN_FROM_LEAVE", "العودة من إجازة", "Return From Leave", catTimeOff, null, wfManager, null,
+            ReturnFromLeaveForm(), Impact(), "LogIn", "#60A5FA", ct);
+        created += await EnsureRequest("RESIGNATION", "استقالة", "Resignation", catHr, null, wfMgrDeptHr, null,
+            ResignationForm(), Impact(document: true), "DoorOpen", "#F87171", ct);
+        created += await EnsureRequest("CLEARANCE", "إخلاء طرف", "Clearance", catHr, null, wfMgrDeptHr, null,
+            ClearanceForm(), Impact(document: true), "ClipboardCheck", "#94A3B8", ct);
+        created += await EnsureRequest("TRAINING_REQUEST", "طلب تدريب", "Training Request", catHr, null, wfMgrFin, null,
+            TrainingForm(), Impact(), "GraduationCap", "#A78BFA", ct);
+        created += await EnsureRequest("EQUIPMENT_REQUEST", "طلب معدات", "Equipment Request", catHr, null, wfManager, null,
+            EquipmentForm(), Impact(), "Laptop", "#38BDF8", ct);
+        created += await EnsureRequest("COMPLAINT", "شكوى", "Complaint", catHr, null, wfHr, null,
+            ComplaintForm(), Impact(), "MessageSquareWarning", "#FB7185", ct);
+        created += await EnsureRequest("CONTRACT_RENEWAL", "تجديد عقد", "Contract Renewal", catHr, null, wfHr, null,
+            ContractRenewalForm(), Impact(document: true), "FileSignature", "#4ADE80", ct);
+        created += await EnsureRequest("DIRECT_MANAGER_CHANGE", "تغيير المدير المباشر", "Direct Manager Change", catHr, null, wfHr, null,
+            ManagerChangeForm(), Impact(), "Users", "#C084FC", ct);
 
         // Retire the old per-leave-type requests (superseded by the single Leave Request).
         await DeactivateRequestsAsync(new[] { "ANNUAL_LEAVE", "SICK_LEAVE", "EMERGENCY_LEAVE" }, ct);
@@ -86,6 +110,9 @@ public sealed class RequestSeeder : IRequestSeeder
         await EnsureMapping("SALARY_CERTIFICATE", "DOC_SALARY_CERTIFICATE", DocumentTriggerEvent.FinalApproval, ct);
         await EnsureMapping("LOAN_REQUEST", "DOC_LOAN_APPROVAL", DocumentTriggerEvent.FinalApproval, ct);
         await EnsureMapping("BUSINESS_TRIP", "DOC_MISSION_LETTER", DocumentTriggerEvent.FinalApproval, ct);
+        await EnsureMapping("CLEARANCE", "DOC_CLEARANCE_FORM", DocumentTriggerEvent.FinalApproval, ct);
+        await EnsureMapping("CONTRACT_RENEWAL", "DOC_CONTRACT_RENEWAL", DocumentTriggerEvent.FinalApproval, ct);
+        await EnsureMapping("RESIGNATION", "DOC_CLEARANCE_FORM", DocumentTriggerEvent.FinalApproval, ct);
         await BackfillLegacyMappingsAsync(ct);
         await _db.SaveChangesAsync(ct);
         return created;
@@ -265,6 +292,7 @@ public sealed class RequestSeeder : IRequestSeeder
             {
                 AffectsLeaveBalance = impact.Leave, AffectsAttendance = impact.Attendance, AffectsPayroll = impact.Payroll,
                 AffectsExpenses = impact.Expenses, AffectsLoans = impact.Loans, CreatesLoanRecord = impact.CreatesLoan,
+                CreatesExpenseRecord = impact.ExpenseRecord, CreatesAttendancePunch = impact.AttendancePunch,
                 RequiresFinanceApproval = impact.Finance, GeneratesDocument = impact.Document,
             },
         };
@@ -331,14 +359,87 @@ public sealed class RequestSeeder : IRequestSeeder
         F("reason", "ما الذي تريد تحديثه؟", "What do you want to update?", FieldType.TextArea, true),
     });
 
+    private static FormSpec MissingPunchForm() => new("FORM_MISSING_PUNCH", "نموذج بصمة ناقصة", "Missing Punch Form", new()
+    {
+        F("startDate", "التاريخ", "Date", FieldType.Date, true),
+        F("checkIn", "وقت الحضور (HH:mm)", "Check In (HH:mm)", FieldType.Text, false, placeholder: "08:00"),
+        F("checkOut", "وقت الانصراف (HH:mm)", "Check Out (HH:mm)", FieldType.Text, false, placeholder: "17:00"),
+        F("reason", "السبب", "Reason", FieldType.TextArea, true),
+    });
+
+    private static FormSpec OvertimeForm() => new("FORM_OVERTIME", "نموذج عمل إضافي", "Overtime Form", new()
+    {
+        F("startDate", "التاريخ", "Date", FieldType.Date, true),
+        F("hours", "عدد الساعات", "Hours", FieldType.Number, true),
+        F("reason", "السبب", "Reason", FieldType.TextArea, true),
+    });
+
+    private static FormSpec DateRangeForm(string code, string ar, string en) => new(code, ar, en, new()
+    {
+        F("startDate", "تاريخ البداية", "Start Date", FieldType.Date, true),
+        F("endDate", "تاريخ النهاية", "End Date", FieldType.Date, true),
+        F("reason", "السبب", "Reason", FieldType.TextArea, false),
+    });
+
+    private static FormSpec ReturnFromLeaveForm() => new("FORM_RETURN_FROM_LEAVE", "نموذج العودة من إجازة", "Return From Leave Form", new()
+    {
+        F("startDate", "تاريخ العودة", "Return Date", FieldType.Date, true),
+        F("notes", "ملاحظات", "Notes", FieldType.TextArea, false),
+    });
+
+    private static FormSpec ResignationForm() => new("FORM_RESIGNATION", "نموذج استقالة", "Resignation Form", new()
+    {
+        F("lastWorkingDay", "آخر يوم عمل", "Last Working Day", FieldType.Date, true),
+        F("reason", "السبب", "Reason", FieldType.TextArea, true),
+    });
+
+    private static FormSpec ClearanceForm() => new("FORM_CLEARANCE", "نموذج إخلاء طرف", "Clearance Form", new()
+    {
+        F("lastWorkingDay", "آخر يوم عمل", "Last Working Day", FieldType.Date, true),
+        F("notes", "ملاحظات", "Notes", FieldType.TextArea, false),
+    });
+
+    private static FormSpec TrainingForm() => new("FORM_TRAINING", "نموذج طلب تدريب", "Training Request Form", new()
+    {
+        F("title", "اسم البرنامج", "Program Title", FieldType.Text, true),
+        F("provider", "الجهة المقدمة", "Provider", FieldType.Text, false),
+        F("amount", "التكلفة", "Cost", FieldType.Currency, false),
+        F("reason", "المبرر", "Justification", FieldType.TextArea, true),
+    });
+
+    private static FormSpec EquipmentForm() => new("FORM_EQUIPMENT", "نموذج طلب معدات", "Equipment Request Form", new()
+    {
+        F("equipmentType", "نوع المعدة", "Equipment Type", FieldType.Dropdown, true, options: Lookup(MasterDataObjectType.AssetType)),
+        F("reason", "المبرر", "Justification", FieldType.TextArea, true),
+    });
+
+    private static FormSpec ComplaintForm() => new("FORM_COMPLAINT", "نموذج شكوى", "Complaint Form", new()
+    {
+        F("subject", "الموضوع", "Subject", FieldType.Text, true),
+        F("description", "التفاصيل", "Details", FieldType.TextArea, true),
+    });
+
+    private static FormSpec ContractRenewalForm() => new("FORM_CONTRACT_RENEWAL", "نموذج تجديد عقد", "Contract Renewal Form", new()
+    {
+        F("endDate", "تاريخ نهاية العقد الجديد", "New Contract End Date", FieldType.Date, true),
+        F("notes", "ملاحظات", "Notes", FieldType.TextArea, false),
+    });
+
+    private static FormSpec ManagerChangeForm() => new("FORM_MANAGER_CHANGE", "نموذج تغيير المدير", "Manager Change Form", new()
+    {
+        F("newManager", "المدير الجديد", "New Manager", FieldType.Text, true),
+        F("reason", "السبب", "Reason", FieldType.TextArea, true),
+    });
+
     private static FieldSpec F(string code, string ar, string en, FieldType type, bool required, string? placeholder = null, string? options = null)
         => new(code, ar, en, type, required, placeholder, options);
 
     private static ImpactSpec Impact(bool leave = false, bool attendance = false, bool payroll = false,
-        bool expenses = false, bool loans = false, bool createsLoan = false, bool finance = false, bool document = false)
-        => new(leave, attendance, payroll, expenses, loans, createsLoan, finance, document);
+        bool expenses = false, bool loans = false, bool createsLoan = false, bool finance = false, bool document = false,
+        bool expenseRecord = false, bool attendancePunch = false)
+        => new(leave, attendance, payroll, expenses, loans, createsLoan, finance, document, expenseRecord, attendancePunch);
 
     private sealed record FormSpec(string Code, string NameAr, string NameEn, List<FieldSpec> Fields);
     private sealed record FieldSpec(string Code, string NameAr, string NameEn, FieldType Type, bool Required, string? Placeholder = null, string? Options = null);
-    private sealed record ImpactSpec(bool Leave, bool Attendance, bool Payroll, bool Expenses, bool Loans, bool CreatesLoan, bool Finance, bool Document);
+    private sealed record ImpactSpec(bool Leave, bool Attendance, bool Payroll, bool Expenses, bool Loans, bool CreatesLoan, bool Finance, bool Document, bool ExpenseRecord, bool AttendancePunch);
 }

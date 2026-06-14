@@ -53,3 +53,29 @@ public class EmployeeAllowanceConfiguration : IEntityTypeConfiguration<EmployeeA
         builder.HasIndex(x => new { x.EmployeeId, x.AllowanceTypeId }).IsUnique();
     }
 }
+
+public class EmployeeAdditionConfiguration : IEntityTypeConfiguration<EmployeeAddition>
+{
+    public void Configure(EntityTypeBuilder<EmployeeAddition> builder)
+    {
+        builder.ToTable("employee_additions");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Amount).HasColumnType("decimal(18,2)");
+        builder.HasIndex(x => x.TenantId);
+        builder.HasIndex(x => new { x.EmployeeId, x.AdditionTypeId }).IsUnique();
+        builder.HasOne(x => x.Employee).WithMany(e => e.Additions).HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class EmployeeDeductionConfiguration : IEntityTypeConfiguration<EmployeeDeduction>
+{
+    public void Configure(EntityTypeBuilder<EmployeeDeduction> builder)
+    {
+        builder.ToTable("employee_deductions");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Amount).HasColumnType("decimal(18,2)");
+        builder.HasIndex(x => x.TenantId);
+        builder.HasIndex(x => new { x.EmployeeId, x.DeductionTypeId }).IsUnique();
+        builder.HasOne(x => x.Employee).WithMany(e => e.Deductions).HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Cascade);
+    }
+}

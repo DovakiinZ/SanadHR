@@ -56,6 +56,19 @@ public static class MasterDataDefaults
             ("MOBILE", "Mobile Allowance", "بدل جوال"),
             ("FOOD", "Food Allowance", "بدل طعام"));
 
+        Add(MasterDataObjectType.AssetType,
+            ("LAPTOP", "Laptop", "حاسب محمول"),
+            ("PHONE", "Mobile Phone", "هاتف"),
+            ("SIM", "SIM Card", "شريحة اتصال"),
+            ("DESK", "Desk & Chair", "مكتب وكرسي"),
+            ("OTHER", "Other", "أخرى"));
+
+        Add(MasterDataObjectType.AdditionType,
+            ("BONUS", "Bonus", "مكافأة"),
+            ("OVERTIME", "Overtime", "عمل إضافي"),
+            ("COMMISSION", "Commission", "عمولة"),
+            ("REWARD", "Reward", "حافز"));
+
         Add(MasterDataObjectType.DeductionType,
             ("GOSI", "GOSI", "التأمينات الاجتماعية"),
             ("LOAN", "Loan Repayment", "سداد قرض"),

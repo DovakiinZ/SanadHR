@@ -16,6 +16,12 @@ public class CompanyProfile : TenantEntity
     public string? CommercialRegistration { get; set; }
     public string? VatNumber { get; set; }
 
+    // Legal / statutory identifiers (used on official documents + payroll).
+    public string? MolNumber { get; set; }      // Ministry of Labor establishment number
+    public string? GosiNumber { get; set; }     // GOSI establishment number
+    /// <summary>Employee GOSI contribution rate (%) applied to basic salary. Default 9.75.</summary>
+    public decimal GosiRate { get; set; } = 9.75m;
+
     // Canonical contact + address (used by documents/reports/printing — single source).
     public string? Website { get; set; }
     public string? Email { get; set; }

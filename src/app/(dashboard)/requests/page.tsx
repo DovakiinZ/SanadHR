@@ -205,7 +205,7 @@ function Modal({ children, onClose, title }: { children: React.ReactNode; onClos
   );
 }
 
-function DocumentsPanel({ instanceId, requestNumber, hasPrimary }: { instanceId: string; requestNumber: string; hasPrimary: boolean }) {
+function DocumentsPanel({ instanceId, requestNumber, hasPrimary, status }: { instanceId: string; requestNumber: string; hasPrimary: boolean; status: string }) {
   const [docs, setDocs] = useState<GeneratedDocInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -214,8 +214,11 @@ function DocumentsPanel({ instanceId, requestNumber, hasPrimary }: { instanceId:
     getRequestDocuments(instanceId).then(setDocs).catch(() => setDocs([])).finally(() => setLoading(false));
   }, [instanceId]);
 
+  // Approved/Completed requests can always print the official document (the renderer applies
+  // company branding + a structured fallback even when no template is assigned).
+  const printable = status === "Approved" || status === "Completed";
   if (loading) return null;
-  if (docs.length === 0 && !hasPrimary) return null;
+  if (docs.length === 0 && !hasPrimary && !printable) return null;
 
   const run = async (key: string, fn: () => Promise<void>, errMsg: string) => {
     setBusy(key);
@@ -278,7 +281,7 @@ function DetailDrawer({ instance, onClose, onApprove, onReject, onCancel }: {
             <span className={`border px-2 py-1 text-xs ${requestStatusColor(instance.status)}`}>{requestStatusLabel(instance.status)}</span>
           </div>
 
-          <DocumentsPanel instanceId={instance.id} requestNumber={instance.requestNumber} hasPrimary={!!instance.generatedDocumentId} />
+          <DocumentsPanel instanceId={instance.id} requestNumber={instance.requestNumber} hasPrimary={!!instance.generatedDocumentId} status={instance.status} />
 
           {(instance.startDate || instance.daysCount) && (
             <div className="text-sm text-muted-foreground">

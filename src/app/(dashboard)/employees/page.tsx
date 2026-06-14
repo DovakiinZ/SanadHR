@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Plus, RefreshCw } from "lucide-react";
+import { Download, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { EmployeeTable } from "@/components/employees/employee-table";
+import { ExportDialog } from "@/components/employees/export-dialog";
 import { getEmployees } from "@/lib/api/employees";
 import { ApiError } from "@/lib/api-client";
 import { Employee } from "@/types";
@@ -15,6 +16,7 @@ export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const fetchEmployees = useCallback(async () => {
     setLoading(true);
@@ -55,6 +57,14 @@ export default function EmployeesPage() {
           >
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           </button>
+          {has("Employees.View") && (
+            <button
+              onClick={() => setExporting(true)}
+              className="inline-flex items-center gap-2 h-10 px-3 border border-border bg-background text-sm hover:bg-muted transition-colors"
+            >
+              <Download className="h-4 w-4" /> تصدير Excel
+            </button>
+          )}
           {has("Employees.Create") && (
             <Link
               href="/employees/new"
@@ -66,6 +76,8 @@ export default function EmployeesPage() {
           )}
         </div>
       </div>
+
+      <ExportDialog open={exporting} onClose={() => setExporting(false)} />
 
       {error && !loading && (
         <div className="border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive flex items-center justify-between">

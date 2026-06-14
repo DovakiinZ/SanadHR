@@ -1,4 +1,5 @@
-import { apiFetch } from "../api-client";
+import { apiFetch, API_BASE_URL } from "../api-client";
+import { getAccessToken } from "../auth-storage";
 import { fileUrl } from "./files";
 import { Employee } from "@/types";
 
@@ -8,6 +9,17 @@ export interface ApiEmployeeAllowance {
   allowanceTypeId: string;
   allowanceType?: string | null;
   allowanceTypeAr?: string | null;
+  amount: number;
+  isActive: boolean;
+}
+
+// Per-employee salary addition / deduction (type id + bilingual name + amount).
+export interface ApiEmployeeCompItem {
+  id: string;
+  typeId: string;
+  type?: string | null;
+  typeAr?: string | null;
+  code?: string | null;
   amount: number;
   isActive: boolean;
 }
@@ -80,6 +92,16 @@ export interface ApiEmployee {
   photoUrl?: string | null;
   notes?: string | null;
   allowances: ApiEmployeeAllowance[];
+  additions: ApiEmployeeCompItem[];
+  deductions: ApiEmployeeCompItem[];
+  // Backend-computed salary breakdown.
+  totalAllowances: number;
+  totalAdditions: number;
+  totalDeductions: number;
+  gosiRate: number;
+  gosiAmount: number;
+  grossSalary: number;
+  netSalary: number;
   createdAt: string;
 }
 
@@ -95,6 +117,11 @@ interface PaginatedResult<T> {
 
 export interface EmployeeAllowanceInput {
   allowanceTypeId: string;
+  amount: number;
+}
+
+export interface EmployeeCompItemInput {
+  typeId: string;
   amount: number;
 }
 
@@ -137,6 +164,8 @@ export interface EmployeeInput {
   photoUrl?: string;
   notes?: string;
   allowances: EmployeeAllowanceInput[];
+  additions: EmployeeCompItemInput[];
+  deductions: EmployeeCompItemInput[];
 }
 
 const GENDER_TO_INT: Record<string, number> = { "ذكر": 1, "أنثى": 2 };
@@ -228,6 +257,8 @@ function toPayload(input: EmployeeInput) {
       allowanceTypeId: a.allowanceTypeId,
       amount: Number(a.amount) || 0,
     })),
+    additions: (input.additions || []).filter((a) => a.typeId).map((a) => ({ typeId: a.typeId, amount: Number(a.amount) || 0 })),
+    deductions: (input.deductions || []).filter((a) => a.typeId).map((a) => ({ typeId: a.typeId, amount: Number(a.amount) || 0 })),
   };
 }
 
@@ -271,4 +302,30 @@ export async function updateEmployee(id: string, input: EmployeeInput): Promise<
 
 export async function deleteEmployee(id: string): Promise<void> {
   await apiFetch<unknown>(`/api/employees/${id}`, { method: "DELETE" });
+}
+
+export interface EmployeeExportRequest {
+  groups: string[];                 // personal | employment | salary | bank | leave | attendance
+  departmentId?: string | null;
+  jobTitleId?: string | null;
+  branchId?: string | null;
+  status?: string | null;
+  ids?: string[];
+}
+
+// Download the employees .xlsx (auth fetch; backend gates salary/bank by permission).
+export async function exportEmployees(body: EmployeeExportRequest): Promise<void> {
+  const token = getAccessToken();
+  const res = await fetch(`${API_BASE_URL}/api/employees/export`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error("تعذر تصدير الموظفين");
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `employees-${new Date().toISOString().slice(0, 10)}.xlsx`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

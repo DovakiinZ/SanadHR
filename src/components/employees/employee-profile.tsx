@@ -49,19 +49,41 @@ export function EmployeeProfile({ employee: e }: Props) {
   const cur = e.currency || "SAR";
   const money = (n: number) => `${Math.round(n).toLocaleString("en-US")} ${cur}`;
 
+  // Salary breakdown is computed on the backend (single source of truth): basic + allowances
+  // + additions − deductions − GOSI. The UI just presents it.
   const comp = useMemo(() => {
     const allowances = (e.allowances ?? []).filter((a) => a.isActive).map((a) => ({ name: a.allowanceTypeAr || a.allowanceType || "بدل", amount: a.amount }));
-    const totalAllowances = allowances.reduce((s, a) => s + a.amount, 0);
-    const gosi = Math.round(e.basicSalary * 0.0975);
-    const deductions = [{ name: "التأمينات الاجتماعية (GOSI)", amount: gosi }];
-    const totalDeductions = deductions.reduce((s, d) => s + d.amount, 0);
-    const gross = e.basicSalary + totalAllowances;
-    return { allowances, totalAllowances, deductions, totalDeductions, gross, net: gross - totalDeductions };
+    const additions = (e.additions ?? []).filter((a) => a.isActive).map((a) => ({ name: a.typeAr || a.type || "إضافة", amount: a.amount }));
+    const deductions = (e.deductions ?? []).filter((a) => a.isActive).map((a) => ({ name: a.typeAr || a.type || "استقطاع", amount: a.amount }));
+    return {
+      allowances, additions, deductions,
+      totalAllowances: e.totalAllowances ?? 0, totalAdditions: e.totalAdditions ?? 0, totalDeductions: e.totalDeductions ?? 0,
+      gosi: e.gosiAmount ?? 0, gosiRate: e.gosiRate ?? 0, gross: e.grossSalary ?? e.basicSalary, net: e.netSalary ?? e.basicSalary,
+    };
   }, [e]);
 
   const leaveTotal = balances.reduce((s, b) => s + b.remainingDays, 0);
   const activeRequests = requests.filter((r) => r.status === "Submitted" || r.status === "InProgress").length;
-  const donutData = [{ name: "أساسي", value: e.basicSalary }, ...comp.allowances];
+
+  // Donut: Basic + Housing + Transport + Other allowances + Additions + Deductions + GOSI.
+  const donutData = useMemo(() => {
+    let housing = 0, transport = 0, other = 0;
+    for (const a of comp.allowances) {
+      const n = a.name.toLowerCase();
+      if (n.includes("سكن") || n.includes("housing")) housing += a.amount;
+      else if (n.includes("نقل") || n.includes("مواصلات") || n.includes("transport")) transport += a.amount;
+      else other += a.amount;
+    }
+    return [
+      { name: "أساسي", value: e.basicSalary },
+      { name: "بدل سكن", value: housing },
+      { name: "بدل نقل", value: transport },
+      { name: "بدلات أخرى", value: other },
+      { name: "إضافات", value: comp.totalAdditions },
+      { name: "استقطاعات", value: comp.totalDeductions },
+      { name: "GOSI", value: comp.gosi },
+    ].filter((d) => d.value > 0);
+  }, [comp, e.basicSalary]);
 
   return (
     <div className="space-y-5">
@@ -148,7 +170,7 @@ export function EmployeeProfile({ employee: e }: Props) {
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                 <div className="border border-border bg-card p-5 lg:col-span-2">
                   <h3 className="mb-4 text-sm font-bold uppercase tracking-wider text-muted-foreground">احتساب صافي الراتب</h3>
-                  <Waterfall basic={e.basicSalary} allowances={comp.totalAllowances} deductions={comp.totalDeductions} net={comp.net} money={money} max={comp.gross} />
+                  <Waterfall basic={e.basicSalary} allowances={comp.totalAllowances} additions={comp.totalAdditions} deductions={comp.totalDeductions} gosi={comp.gosi} net={comp.net} money={money} max={comp.gross} />
                 </div>
                 <div className="border border-border bg-card p-5">
                   <h3 className="mb-2 text-sm font-bold uppercase tracking-wider text-muted-foreground">تكوين الراتب</h3>
@@ -164,14 +186,19 @@ export function EmployeeProfile({ employee: e }: Props) {
                   </div>
                 </div>
               </div>
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                 <Panel title="البدلات">
                   {comp.allowances.length === 0 ? <p className="text-sm text-muted-foreground">لا توجد بدلات</p> : comp.allowances.map((a, i) => <Row key={i} k={a.name} v={money(a.amount)} />)}
                   <div className="mt-2 border-t border-border pt-2"><Row k="إجمالي البدلات" v={money(comp.totalAllowances)} bold /></div>
                 </Panel>
+                <Panel title="الإضافات">
+                  {comp.additions.length === 0 ? <p className="text-sm text-muted-foreground">لا توجد إضافات</p> : comp.additions.map((a, i) => <Row key={i} k={a.name} v={money(a.amount)} />)}
+                  <div className="mt-2 border-t border-border pt-2"><Row k="إجمالي الإضافات" v={money(comp.totalAdditions)} bold /></div>
+                </Panel>
                 <Panel title="الاستقطاعات">
                   {comp.deductions.map((d, i) => <Row key={i} k={d.name} v={money(d.amount)} />)}
-                  <div className="mt-2 border-t border-border pt-2"><Row k="إجمالي الاستقطاعات" v={money(comp.totalDeductions)} bold /></div>
+                  <Row k={`التأمينات (GOSI ${comp.gosiRate}%)`} v={money(comp.gosi)} />
+                  <div className="mt-2 border-t border-border pt-2"><Row k="إجمالي الاستقطاعات" v={money(comp.totalDeductions + comp.gosi)} bold /></div>
                 </Panel>
               </div>
               <Panel title="طريقة الدفع">
@@ -254,14 +281,16 @@ function Row({ k, v, bold }: { k: string; v?: string | number | null; bold?: boo
 function Empty({ text }: { text: string }) {
   return <div className="border border-dashed border-border py-12 text-center text-sm text-muted-foreground">{text}</div>;
 }
-function Waterfall({ basic, allowances, deductions, net, money, max }: { basic: number; allowances: number; deductions: number; net: number; money: (n: number) => string; max: number }) {
+function Waterfall({ basic, allowances, additions, deductions, gosi, net, money, max }: { basic: number; allowances: number; additions: number; deductions: number; gosi: number; net: number; money: (n: number) => string; max: number }) {
   const w = (n: number) => `${Math.max(2, (n / (max || 1)) * 100)}%`;
   const rows = [
     { label: "الراتب الأساسي", val: basic, color: "#60A5FA", sign: "" },
     { label: "البدلات", val: allowances, color: "#34D399", sign: "+" },
+    { label: "الإضافات", val: additions, color: "#A3E635", sign: "+" },
     { label: "الاستقطاعات", val: deductions, color: "#F87171", sign: "−" },
+    { label: "التأمينات (GOSI)", val: gosi, color: "#FB923C", sign: "−" },
     { label: "صافي الراتب", val: net, color: "#FBBF24", sign: "=" },
-  ];
+  ].filter((r) => r.val > 0 || r.sign === "=" || r.sign === "");
   return (
     <div className="space-y-3">
       {rows.map((r, i) => (

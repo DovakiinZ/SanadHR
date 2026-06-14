@@ -132,6 +132,21 @@ export const getMyRequests = () =>
 export const getInbox = () =>
   apiFetch<RequestInstance[]>("/api/requests/inbox");
 
+export interface LeaveRecord {
+  id: string;
+  requestNumber: string;
+  employeeId: string;
+  employeeName?: string | null;
+  leaveType?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  daysCount?: number | null;
+  generatedDocumentId?: string | null;
+}
+
+export const getLeaves = (scope: "mine" | "all" = "all") =>
+  apiFetch<LeaveRecord[]>(`/api/requests/leaves${scope === "all" ? "?scope=all" : ""}`);
+
 export const getRequest = (id: string) =>
   apiFetch<RequestInstance>(`/api/requests/${id}`);
 

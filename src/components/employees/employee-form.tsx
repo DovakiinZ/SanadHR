@@ -67,7 +67,7 @@ function emptyInput(): EmployeeInput {
     address: "", city: "", emergencyContactName: "", emergencyContactPhone: "",
     salary: 0, currency: "SAR", paymentMethodId: "", bankId: "", bankAccountNumber: "",
     iban: "", salaryCardNumber: "", cardProvider: "", workLocationId: "",
-    leavePolicyId: "", payrollGroupId: "", photoUrl: "", notes: "", allowances: [],
+    leavePolicyId: "", payrollGroupId: "", photoUrl: "", notes: "", allowances: [], additions: [], deductions: [],
   };
 }
 
@@ -92,6 +92,8 @@ function fromApi(a: ApiEmployee): EmployeeInput {
     workLocationId: a.workLocationId ?? "", leavePolicyId: a.leavePolicyId ?? "",
     payrollGroupId: a.payrollGroupId ?? "", photoUrl: a.photoUrl ?? "", notes: a.notes ?? "",
     allowances: (a.allowances ?? []).map((al) => ({ allowanceTypeId: al.allowanceTypeId, amount: al.amount })),
+    additions: (a.additions ?? []).map((x) => ({ typeId: x.typeId, amount: x.amount })),
+    deductions: (a.deductions ?? []).map((x) => ({ typeId: x.typeId, amount: x.amount })),
   };
 }
 
@@ -111,6 +113,8 @@ export function EmployeeForm({ mode = "create", employeeId, initial }: Props) {
   const [leavePolicies, setLeavePolicies] = useState<LookupItem[]>([]);
   const [payrollGroups, setPayrollGroups] = useState<LookupItem[]>([]);
   const [allowanceTypes, setAllowanceTypes] = useState<LookupItem[]>([]);
+  const [additionTypes, setAdditionTypes] = useState<LookupItem[]>([]);
+  const [deductionTypes, setDeductionTypes] = useState<LookupItem[]>([]);
   const [departments, setDepartments] = useState<OrgOption[]>([]);
   const [branches, setBranches] = useState<OrgOption[]>([]);
   const [managers, setManagers] = useState<Employee[]>([]);
@@ -118,15 +122,17 @@ export function EmployeeForm({ mode = "create", employeeId, initial }: Props) {
   useEffect(() => {
     (async () => {
       try {
-        const [jt, nat, ct, et, pm, bk, wl, lp, pg, at, deps, brs, emps] = await Promise.all([
+        const [jt, nat, ct, et, pm, bk, wl, lp, pg, at, addt, dedt, deps, brs, emps] = await Promise.all([
           getLookup("job-titles"), getLookup("nationalities"), getLookup("contract-types"),
           getLookup("employment-types"), getLookup("payment-methods"), getLookup("banks"),
           getLookup("work-locations"), getLookup("leave-policies"), getLookup("payroll-groups"),
-          getLookup("allowance-types"), getDepartments(), getBranches(), getEmployees({ pageSize: 200 }),
+          getLookup("allowance-types"), getLookup("addition-types"), getLookup("deduction-types"),
+          getDepartments(), getBranches(), getEmployees({ pageSize: 200 }),
         ]);
         setJobTitles(jt); setNationalities(nat); setContractTypes(ct); setEmploymentTypes(et);
         setPaymentMethods(pm); setBanks(bk); setWorkLocations(wl); setLeavePolicies(lp);
-        setPayrollGroups(pg); setAllowanceTypes(at); setDepartments(deps); setBranches(brs);
+        setPayrollGroups(pg); setAllowanceTypes(at); setAdditionTypes(addt); setDeductionTypes(dedt);
+        setDepartments(deps); setBranches(brs);
         setManagers(emps.filter((e) => e.id !== employeeId));
       } catch (err) { notifyError(err, "تعذر تحميل القوائم"); }
     })();
@@ -156,6 +162,19 @@ export function EmployeeForm({ mode = "create", employeeId, initial }: Props) {
   }
   function setAllowanceAmount(typeId: string, amount: number) {
     setForm((f) => ({ ...f, allowances: f.allowances.map((a) => a.allowanceTypeId === typeId ? { ...a, amount } : a) }));
+  }
+
+  // Additions / Deductions share one shape ({ typeId, amount }); a `key` selects the field.
+  const additionMap = useMemo(() => new Map(form.additions.map((a) => [a.typeId, a.amount])), [form.additions]);
+  const deductionMap = useMemo(() => new Map(form.deductions.map((a) => [a.typeId, a.amount])), [form.deductions]);
+  function toggleComp(key: "additions" | "deductions", typeId: string, on: boolean) {
+    setForm((f) => {
+      const others = f[key].filter((a) => a.typeId !== typeId);
+      return { ...f, [key]: on ? [...others, { typeId, amount: 0 }] : others };
+    });
+  }
+  function setCompAmount(key: "additions" | "deductions", typeId: string, amount: number) {
+    setForm((f) => ({ ...f, [key]: f[key].map((a) => a.typeId === typeId ? { ...a, amount } : a) }));
   }
 
   async function onPhoto(e: React.ChangeEvent<HTMLInputElement>) {
@@ -301,6 +320,11 @@ export function EmployeeForm({ mode = "create", employeeId, initial }: Props) {
             })}
           </div>
         </div>
+
+        <div className="sm:col-span-2 lg:col-span-3 grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <CompEditor label="الإضافات (مكافآت/عمل إضافي)" emptyHint="لا توجد أنواع إضافات معرّفة" types={additionTypes} map={additionMap} onToggle={(id, on) => toggleComp("additions", id, on)} onAmount={(id, v) => setCompAmount("additions", id, v)} />
+          <CompEditor label="الاستقطاعات (عدا GOSI)" emptyHint="لا توجد أنواع استقطاعات معرّفة" types={deductionTypes} map={deductionMap} onToggle={(id, on) => toggleComp("deductions", id, on)} onAmount={(id, v) => setCompAmount("deductions", id, v)} />
+        </div>
       </Section>
 
       <Section title="الحضور والموقع">
@@ -322,6 +346,36 @@ export function EmployeeForm({ mode = "create", employeeId, initial }: Props) {
           {saving && <Loader2 className="h-4 w-4 animate-spin" />}
           {saving ? "جاري الحفظ..." : (mode === "edit" ? "حفظ التعديلات" : "إضافة الموظف")}
         </Button>
+      </div>
+    </div>
+  );
+}
+
+// Reusable editor for salary additions / deductions (toggle + amount per master-data type).
+function CompEditor({ label, emptyHint, types, map, onToggle, onAmount }: {
+  label: string; emptyHint: string; types: LookupItem[]; map: Map<string, number>;
+  onToggle: (id: string, on: boolean) => void; onAmount: (id: string, amount: number) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label className="text-xs font-bold uppercase tracking-wider">{label}</Label>
+      <div className="border border-border divide-y divide-border">
+        {types.length === 0 && <div className="px-3 py-3 text-xs text-muted-foreground">{emptyHint}</div>}
+        {types.map((t) => {
+          const on = map.has(t.id);
+          return (
+            <div key={t.id} className="flex items-center gap-3 px-3 py-2">
+              <input type="checkbox" checked={on} onChange={(e) => onToggle(t.id, e.target.checked)} />
+              <span className="text-sm flex-1">{lookupLabel(t)}</span>
+              {on && (
+                <div className="flex items-center gap-1">
+                  <Input type="number" min={0} value={map.get(t.id) ?? 0} onChange={(e) => onAmount(t.id, Number(e.target.value))} className="bg-secondary border-border h-8 w-32 text-sm" />
+                  <span className="text-xs text-muted-foreground">ريال</span>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

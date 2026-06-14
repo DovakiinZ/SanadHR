@@ -56,6 +56,8 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     // Employees
     public DbSet<Employee> Employees => Set<Employee>();
     public DbSet<EmployeeAllowance> EmployeeAllowances => Set<EmployeeAllowance>();
+    public DbSet<EmployeeAddition> EmployeeAdditions => Set<EmployeeAddition>();
+    public DbSet<EmployeeDeduction> EmployeeDeductions => Set<EmployeeDeduction>();
 
     // Tasks
     public DbSet<HrTask> HrTasks => Set<HrTask>();
@@ -198,6 +200,11 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<HR.Domain.Engines.Attendance.AttendanceRecord> AttendanceRecords => Set<HR.Domain.Engines.Attendance.AttendanceRecord>();
     public DbSet<HR.Domain.Engines.Notifications.Notification> Notifications => Set<HR.Domain.Engines.Notifications.Notification>();
     public DbSet<HR.Domain.Engines.Notifications.EmailNotificationQueue> EmailQueue => Set<HR.Domain.Engines.Notifications.EmailNotificationQueue>();
+
+    // Request impact targets — Expenses / Loans (fed by approved requests)
+    public DbSet<HR.Domain.Engines.Expenses.Expense> Expenses => Set<HR.Domain.Engines.Expenses.Expense>();
+    public DbSet<HR.Domain.Engines.Loans.Loan> Loans => Set<HR.Domain.Engines.Loans.Loan>();
+    public DbSet<HR.Domain.Engines.Loans.LoanInstallment> LoanInstallments => Set<HR.Domain.Engines.Loans.LoanInstallment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
