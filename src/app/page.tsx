@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Sanad (سند) — Editorial landing page in the Thmanyah typographic tradition.
@@ -240,22 +241,31 @@ export default function SanadLanding() {
             </a>
           </div>
 
-          {/* CTA — left side */}
-          <a
-            href="#cta"
-            className="inline-flex items-center px-4 py-2 text-[14px] transition-colors"
-            style={{ border: `1px solid ${INK}`, color: INK }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = INK;
-              e.currentTarget.style.color = PAPER;
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "transparent";
-              e.currentTarget.style.color = INK;
-            }}
-          >
-            ابدأ الآن
-          </a>
+          {/* Auth actions — left side */}
+          <div className="flex items-center gap-3">
+            <Link
+              href="/login"
+              className="text-[14px] transition-opacity hover:opacity-60"
+              style={{ color: INK }}
+            >
+              تسجيل الدخول
+            </Link>
+            <Link
+              href="/register"
+              className="inline-flex items-center px-4 py-2 text-[14px] transition-colors"
+              style={{ border: `1px solid ${INK}`, color: INK }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = INK;
+                e.currentTarget.style.color = PAPER;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+                e.currentTarget.style.color = INK;
+              }}
+            >
+              ابدأ الآن
+            </Link>
+          </div>
         </nav>
       </header>
 
@@ -612,6 +622,16 @@ export default function SanadLanding() {
           >
             احجز موعد تجربة
           </a>
+          <p className="mt-5 text-[14px]" style={{ color: "#C9B8AE" }}>
+            لديك حساب بالفعل؟{" "}
+            <Link
+              href="/login"
+              className="underline underline-offset-4 transition-opacity hover:opacity-70"
+              style={{ color: "#E08E6F" }}
+            >
+              تسجيل الدخول
+            </Link>
+          </p>
         </div>
       </section>
 
