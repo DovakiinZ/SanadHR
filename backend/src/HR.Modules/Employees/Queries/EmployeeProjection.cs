@@ -1,3 +1,4 @@
+using System.Text.Json;
 using HR.Domain.Enums;
 using HR.Infrastructure.Persistence;
 using HR.Modules.Employees.DTOs;
@@ -54,8 +55,14 @@ public static class EmployeeProjection
 
         var md = await ctx.MasterDataItems
             .Where(m => mdIds.Contains(m.Id))
-            .Select(m => new { m.Id, m.Code, m.NameEn, m.NameAr })
+            .Select(m => new { m.Id, m.Code, m.NameEn, m.NameAr, m.MetadataJson })
             .ToDictionaryAsync(m => m.Id, ct);
+
+        // Allowance-type rules (max cap + GOSI inclusion) parsed once from master-data metadata.
+        var allowMeta = new Dictionary<Guid, (decimal? Max, bool Gosi)>();
+        foreach (var a in allowances)
+            if (!allowMeta.ContainsKey(a.AllowanceTypeId) && md.TryGetValue(a.AllowanceTypeId, out var m))
+                allowMeta[a.AllowanceTypeId] = ParseAllowanceRules(m.MetadataJson);
 
         var depIds = employees.Where(e => e.DepartmentId.HasValue).Select(e => e.DepartmentId!.Value).ToHashSet();
         var brIds = employees.Where(e => e.BranchId.HasValue).Select(e => e.BranchId!.Value).ToHashSet();
@@ -172,17 +179,50 @@ public static class EmployeeProjection
         }).ToList();
 
         // Compute the salary breakdown (single source of truth): basic + allowances + additions − deductions − GOSI.
+        // Allowance-type rules apply: an allowance is capped at its MaxAmount, and only allowances
+        // flagged "include in GOSI" join the basic salary in the GOSI contribution base.
         foreach (var dto in list)
         {
-            dto.TotalAllowances = dto.Allowances.Where(a => a.IsActive).Sum(a => a.Amount);
+            decimal totalAllowances = 0m, gosiAllowanceBase = 0m;
+            foreach (var a in dto.Allowances.Where(a => a.IsActive))
+            {
+                var amount = a.Amount;
+                var rule = allowMeta.TryGetValue(a.AllowanceTypeId, out var r) ? r : (Max: (decimal?)null, Gosi: false);
+                if (rule.Max is { } max && max > 0 && amount > max) amount = max;   // cap
+                totalAllowances += amount;
+                if (rule.Gosi) gosiAllowanceBase += amount;                          // GOSI inclusion
+            }
+
+            dto.TotalAllowances = totalAllowances;
             dto.TotalAdditions = dto.Additions.Where(a => a.IsActive).Sum(a => a.Amount);
             dto.TotalDeductions = dto.Deductions.Where(a => a.IsActive).Sum(a => a.Amount);
             dto.GosiRate = gosiRate;
-            dto.GosiAmount = Math.Round(dto.BasicSalary * gosiRate / 100m, 2);
+            dto.GosiAmount = Math.Round((dto.BasicSalary + gosiAllowanceBase) * gosiRate / 100m, 2);
             dto.GrossSalary = dto.BasicSalary + dto.TotalAllowances + dto.TotalAdditions;
             dto.NetSalary = dto.GrossSalary - dto.TotalDeductions - dto.GosiAmount;
         }
         return list;
+    }
+
+    /// <summary>Reads the allowance-type rule flags (max cap + GOSI inclusion) from master-data metadata JSON.</summary>
+    private static (decimal? Max, bool Gosi) ParseAllowanceRules(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return (null, false);
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) return (null, false);
+            decimal? max = null; bool gosi = false;
+            foreach (var p in doc.RootElement.EnumerateObject())
+            {
+                if (p.NameEquals("maxAmount") && p.Value.ValueKind == JsonValueKind.Number && p.Value.TryGetDecimal(out var mx))
+                    max = mx;
+                else if (p.NameEquals("gosiApplicable") && (p.Value.ValueKind == JsonValueKind.True || p.Value.ValueKind == JsonValueKind.False))
+                    gosi = p.Value.GetBoolean();
+            }
+            return (max, gosi);
+        }
+        catch { return (null, false); }
     }
 
     private static string? BuildManagerName(string? first, string? last)
