@@ -41,12 +41,81 @@
   font-display: swap;
 }
 
+/* Thmanyah Serif Display — for large editorial headlines */
+@font-face {
+  font-family: "Thmanyah Serif Display";
+  src: url("/fonts/thmanyahserifdisplay-Light.woff2") format("woff2");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Thmanyah Serif Display";
+  src: url("/fonts/thmanyahserifdisplay-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Thmanyah Serif Display";
+  src: url("/fonts/thmanyahserifdisplay-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Thmanyah Serif Display";
+  src: url("/fonts/thmanyahserifdisplay-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Thmanyah Serif Display";
+  src: url("/fonts/thmanyahserifdisplay-Black.woff2") format("woff2");
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Thmanyah Serif Text — for body copy & running editorial text */
+@font-face {
+  font-family: "Thmanyah Serif Text";
+  src: url("/fonts/thmanyahseriftext-Light.woff2") format("woff2");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Thmanyah Serif Text";
+  src: url("/fonts/thmanyahseriftext-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Thmanyah Serif Text";
+  src: url("/fonts/thmanyahseriftext-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Thmanyah Serif Text";
+  src: url("/fonts/thmanyahseriftext-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: "Thmanyah Sans", system-ui, sans-serif;
   --font-mono: monospace;
-  --font-heading: "Thmanyah Sans", system-ui, sans-serif;
+  --font-heading: "Thmanyah Serif Display", "Thmanyah Serif Text", Georgia, serif;
+  --font-serif-display: "Thmanyah Serif Display", "Thmanyah Serif Text", Georgia, serif;
+  --font-serif-text: "Thmanyah Serif Text", "Thmanyah Serif Display", Georgia, serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -85,75 +154,75 @@
   --radius-4xl: 0px;
 }
 
-/* Slate Industrial Dark Theme — always dark */
+/* Sanad Editorial — warm-paper light theme (matches the landing palette) */
 :root {
-  --background: #18181B;
-  --foreground: #FAFAFA;
-  --card: #212125;
-  --card-foreground: #FAFAFA;
-  --popover: #212125;
-  --popover-foreground: #FAFAFA;
-  --primary: #FBBF24;
-  --primary-foreground: #18181B;
-  --secondary: #1C1C20;
-  --secondary-foreground: #FAFAFA;
-  --muted: #1C1C20;
-  --muted-foreground: #71717A;
-  --accent: #FBBF24;
-  --accent-foreground: #18181B;
-  --destructive: #EF4444;
-  --border: #3F3F46;
-  --input: #3F3F46;
-  --ring: #FBBF24;
-  --chart-1: #FBBF24;
-  --chart-2: #71717A;
-  --chart-3: #3F3F46;
-  --chart-4: #FAFAFA;
-  --chart-5: #1C1C20;
+  --background: #FDFBF7;
+  --foreground: #1A1A1A;
+  --card: #FFFFFF;
+  --card-foreground: #1A1A1A;
+  --popover: #FFFFFF;
+  --popover-foreground: #1A1A1A;
+  --primary: #C25A3F;
+  --primary-foreground: #FFFFFF;
+  --secondary: #F4F0E9;
+  --secondary-foreground: #1A1A1A;
+  --muted: #F4F0E9;
+  --muted-foreground: #6B6358;
+  --accent: #F0E7DA;
+  --accent-foreground: #8C3B24;
+  --destructive: #C0392B;
+  --border: #EFECE6;
+  --input: #E3DCCF;
+  --ring: #C25A3F;
+  --chart-1: #C25A3F;
+  --chart-2: #8C3B24;
+  --chart-3: #C9A227;
+  --chart-4: #6B6358;
+  --chart-5: #D9B5A8;
   --radius: 0px;
-  --sidebar: #1C1C20;
-  --sidebar-foreground: #FAFAFA;
-  --sidebar-primary: #FBBF24;
-  --sidebar-primary-foreground: #18181B;
-  --sidebar-accent: #212125;
-  --sidebar-accent-foreground: #FAFAFA;
-  --sidebar-border: #3F3F46;
-  --sidebar-ring: #FBBF24;
+  --sidebar: #F4F0E9;
+  --sidebar-foreground: #1A1A1A;
+  --sidebar-primary: #C25A3F;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #FFFFFF;
+  --sidebar-accent-foreground: #8C3B24;
+  --sidebar-border: #EFECE6;
+  --sidebar-ring: #C25A3F;
 }
 
-/* No light mode — force dark always */
+/* Keep .dark identical so any stray `dark` class still renders the editorial theme */
 .dark {
-  --background: #18181B;
-  --foreground: #FAFAFA;
-  --card: #212125;
-  --card-foreground: #FAFAFA;
-  --popover: #212125;
-  --popover-foreground: #FAFAFA;
-  --primary: #FBBF24;
-  --primary-foreground: #18181B;
-  --secondary: #1C1C20;
-  --secondary-foreground: #FAFAFA;
-  --muted: #1C1C20;
-  --muted-foreground: #71717A;
-  --accent: #FBBF24;
-  --accent-foreground: #18181B;
-  --destructive: #EF4444;
-  --border: #3F3F46;
-  --input: #3F3F46;
-  --ring: #FBBF24;
-  --chart-1: #FBBF24;
-  --chart-2: #71717A;
-  --chart-3: #3F3F46;
-  --chart-4: #FAFAFA;
-  --chart-5: #1C1C20;
-  --sidebar: #1C1C20;
-  --sidebar-foreground: #FAFAFA;
-  --sidebar-primary: #FBBF24;
-  --sidebar-primary-foreground: #18181B;
-  --sidebar-accent: #212125;
-  --sidebar-accent-foreground: #FAFAFA;
-  --sidebar-border: #3F3F46;
-  --sidebar-ring: #FBBF24;
+  --background: #FDFBF7;
+  --foreground: #1A1A1A;
+  --card: #FFFFFF;
+  --card-foreground: #1A1A1A;
+  --popover: #FFFFFF;
+  --popover-foreground: #1A1A1A;
+  --primary: #C25A3F;
+  --primary-foreground: #FFFFFF;
+  --secondary: #F4F0E9;
+  --secondary-foreground: #1A1A1A;
+  --muted: #F4F0E9;
+  --muted-foreground: #6B6358;
+  --accent: #F0E7DA;
+  --accent-foreground: #8C3B24;
+  --destructive: #C0392B;
+  --border: #EFECE6;
+  --input: #E3DCCF;
+  --ring: #C25A3F;
+  --chart-1: #C25A3F;
+  --chart-2: #8C3B24;
+  --chart-3: #C9A227;
+  --chart-4: #6B6358;
+  --chart-5: #D9B5A8;
+  --sidebar: #F4F0E9;
+  --sidebar-foreground: #1A1A1A;
+  --sidebar-primary: #C25A3F;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #FFFFFF;
+  --sidebar-accent-foreground: #8C3B24;
+  --sidebar-border: #EFECE6;
+  --sidebar-ring: #C25A3F;
 }
 
 @layer base {
@@ -165,5 +234,9 @@
   }
   html {
     @apply font-sans;
+  }
+  /* Editorial: section/page headings use the Thmanyah serif; body & UI stay sans */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
   }
 }

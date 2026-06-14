@@ -50,3 +50,7 @@ next-env.d.ts
 # Azure deploy artifacts
 /publish/
 /publish.zip
+
+# Python bytecode (from .claude skill scripts)
+__pycache__/
+*.pyc
