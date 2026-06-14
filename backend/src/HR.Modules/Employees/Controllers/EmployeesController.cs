@@ -23,6 +23,15 @@ public class EmployeesController : BaseApiController
         return OkResponse(result);
     }
 
+    /// <summary>Export employees to .xlsx — field groups + filters; salary/bank gated by permission.</summary>
+    [HttpPost("export")]
+    [RequirePermission("Employees.View")]
+    public async Task<IActionResult> Export([FromBody] ExportEmployeesQuery query, CancellationToken ct)
+    {
+        var result = await Mediator.Send(query, ct);
+        return File(result.Content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", result.FileName);
+    }
+
     [HttpGet("{id:guid}")]
     [RequirePermission("Employees.View")]
     public async Task<ActionResult<ApiResponse<EmployeeDto>>> GetById(Guid id, CancellationToken ct)

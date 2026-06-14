@@ -49,4 +49,6 @@ public record UpdateEmployeeCommand : IRequest<EmployeeDto>
     public string? Notes { get; init; }
 
     public List<EmployeeAllowanceInput> Allowances { get; init; } = new();
+    public List<EmployeeCompItemInput> Additions { get; init; } = new();
+    public List<EmployeeCompItemInput> Deductions { get; init; } = new();
 }

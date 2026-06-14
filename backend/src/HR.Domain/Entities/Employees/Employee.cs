@@ -55,4 +55,7 @@ public class Employee : TenantEntity
 
     // Per-employee allowance overrides (values for AllowanceType master-data items).
     public ICollection<EmployeeAllowance> Allowances { get; set; } = new List<EmployeeAllowance>();
+    // Per-employee salary additions (AdditionType) and deductions (DeductionType).
+    public ICollection<EmployeeAddition> Additions { get; set; } = new List<EmployeeAddition>();
+    public ICollection<EmployeeDeduction> Deductions { get; set; } = new List<EmployeeDeduction>();
 }

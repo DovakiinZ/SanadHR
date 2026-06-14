@@ -66,6 +66,10 @@ public class CreateEmployeeCommandHandler : IRequestHandler<CreateEmployeeComman
                 Amount = a.Amount,
                 IsActive = true,
             });
+        foreach (var a in request.Additions.Where(a => a.TypeId != Guid.Empty))
+            employee.Additions.Add(new EmployeeAddition { AdditionTypeId = a.TypeId, Amount = a.Amount, IsActive = true });
+        foreach (var a in request.Deductions.Where(a => a.TypeId != Guid.Empty))
+            employee.Deductions.Add(new EmployeeDeduction { DeductionTypeId = a.TypeId, Amount = a.Amount, IsActive = true });
 
         _context.Employees.Add(employee);
         await _context.SaveChangesAsync(cancellationToken);

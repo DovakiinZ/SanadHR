@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Building2, Database, ChevronLeft, Inbox, Wallet, CalendarDays, Landmark, FileText, LayoutTemplate, Stamp } from "lucide-react";
+import { ChevronLeft, Database, Inbox, Wallet, CalendarDays, Landmark, FileText, LayoutTemplate } from "lucide-react";
 
 const categories = [
   {
@@ -15,15 +15,9 @@ const categories = [
     icon: LayoutTemplate,
   },
   {
-    href: "/settings/document-branding",
-    title: "هوية المستندات",
-    description: "الشعار، الختم الرسمي، توقيع الموارد البشرية والرئيس التنفيذي وبيانات الشركة — تُحقن في كل مستند",
-    icon: Stamp,
-  },
-  {
-    href: "/settings/company",
-    title: "إعدادات الشركة",
-    description: "هوية الشركة، الشعار، الختم، السجل التجاري، الرقم الضريبي، التواصل والعنوان — تُستخدم في المستندات",
+    href: "/settings/company-organization",
+    title: "الشركة والمؤسسة",
+    description: "هوية الشركة والشعار والختم والتواقيع والسجل/الضريبي والمعلومات النظامية والهيكل التنظيمي (الأقسام/الفروع/المسميات/الدرجات)",
     icon: Landmark,
   },
   {
@@ -31,12 +25,6 @@ const categories = [
     title: "إعدادات الإجازات",
     description: "أنواع الإجازات وقواعدها (مدفوعة/رصيد/مرفقات) وأرصدة الموظفين",
     icon: CalendarDays,
-  },
-  {
-    href: "/settings/organization",
-    title: "إعدادات المؤسسة",
-    description: "الأقسام، الفروع، المسميات الوظيفية، الجنسيات، الدرجات، مراكز التكلفة",
-    icon: Building2,
   },
   {
     href: "/settings/payroll",

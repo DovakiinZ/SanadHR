@@ -33,6 +33,9 @@ public record UpdateCompanyProfileCommand : IRequest<CompanyProfileDto>
     public string? DefaultCurrency { get; init; }
     public string? DefaultLanguage { get; init; }
     public string? TimeZone { get; init; }
+    public string? MolNumber { get; init; }
+    public string? GosiNumber { get; init; }
+    public decimal GosiRate { get; init; } = 9.75m;
 }
 
 public record CreatePositionCommand : IRequest<PositionDto>
@@ -217,6 +220,9 @@ public class UpdateCompanyProfileCommandHandler : IRequestHandler<UpdateCompanyP
         entity.DefaultCurrency = request.DefaultCurrency;
         entity.DefaultLanguage = request.DefaultLanguage;
         entity.TimeZone = request.TimeZone;
+        entity.MolNumber = request.MolNumber;
+        entity.GosiNumber = request.GosiNumber;
+        if (request.GosiRate > 0) entity.GosiRate = request.GosiRate;
 
         await _context.SaveChangesAsync(cancellationToken);
         return _mapper.Map<CompanyProfileDto>(entity);

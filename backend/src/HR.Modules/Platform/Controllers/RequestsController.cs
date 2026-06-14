@@ -290,6 +290,34 @@ public class RequestsController : BaseApiController
         return OkResponse(events);
     }
 
+    /// <summary>Approved leave records (the Leaves page). scope=all (with permission) → everyone.</summary>
+    [HttpGet("leaves")]
+    public async Task<ActionResult<ApiResponse<List<LeaveRecordDto>>>> Leaves([FromQuery] string? scope, CancellationToken ct)
+    {
+        var canSeeAll = _user.Permissions.Contains("Platform.MasterData.Edit") || _user.Permissions.Contains("Employees.View");
+        var q = _db.RequestInstances.Where(r => r.LeaveTypeId != null && r.Status == RequestStatus.Approved);
+        if (!(scope == "all" && canSeeAll))
+        {
+            var myId = await _db.Employees.Where(e => e.UserId == _user.UserId).Select(e => (Guid?)e.Id).FirstOrDefaultAsync(ct);
+            q = q.Where(r => r.EmployeeId == myId);
+        }
+        var rows = await (from r in q
+                          join emp in _db.Employees on r.EmployeeId equals emp.Id into ej
+                          from emp in ej.DefaultIfEmpty()
+                          join lt in _db.MasterDataItems on r.LeaveTypeId equals lt.Id into lj
+                          from lt in lj.DefaultIfEmpty()
+                          orderby r.SubmittedAt descending
+                          select new LeaveRecordDto
+                          {
+                              Id = r.Id, RequestNumber = r.RequestNumber, EmployeeId = r.EmployeeId,
+                              EmployeeName = emp != null ? ((emp.FirstNameAr ?? emp.FirstName) + " " + (emp.LastNameAr ?? emp.LastName)) : null,
+                              LeaveType = lt != null ? lt.NameAr : null,
+                              StartDate = r.StartDate, EndDate = r.EndDate, DaysCount = r.DaysCount,
+                              GeneratedDocumentId = r.GeneratedDocumentId,
+                          }).ToListAsync(ct);
+        return OkResponse(rows);
+    }
+
     [HttpGet("inbox")]
     public async Task<ActionResult<ApiResponse<List<RequestInstanceDto>>>> Inbox(CancellationToken ct)
     {
@@ -414,6 +442,19 @@ public sealed class RequestTemplateMappingDto
     public string TriggerEvent { get; set; } = null!;
     public bool IsSystem { get; set; }
     public bool IsActive { get; set; }
+}
+
+public sealed class LeaveRecordDto
+{
+    public Guid Id { get; set; }
+    public string RequestNumber { get; set; } = null!;
+    public Guid EmployeeId { get; set; }
+    public string? EmployeeName { get; set; }
+    public string? LeaveType { get; set; }
+    public DateTime? StartDate { get; set; }
+    public DateTime? EndDate { get; set; }
+    public decimal? DaysCount { get; set; }
+    public Guid? GeneratedDocumentId { get; set; }
 }
 
 public sealed class GeneratedDocInfo

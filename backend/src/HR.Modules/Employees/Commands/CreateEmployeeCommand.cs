@@ -10,6 +10,13 @@ public record EmployeeAllowanceInput
     public decimal Amount { get; init; }
 }
 
+/// <summary>Generic salary line input (TypeId → master-data AdditionType/DeductionType + amount).</summary>
+public record EmployeeCompItemInput
+{
+    public Guid TypeId { get; init; }
+    public decimal Amount { get; init; }
+}
+
 public record CreateEmployeeCommand : IRequest<EmployeeDto>
 {
     public string EmployeeNumber { get; init; } = null!;
@@ -56,4 +63,6 @@ public record CreateEmployeeCommand : IRequest<EmployeeDto>
     public string? Notes { get; init; }
 
     public List<EmployeeAllowanceInput> Allowances { get; init; } = new();
+    public List<EmployeeCompItemInput> Additions { get; init; } = new();
+    public List<EmployeeCompItemInput> Deductions { get; init; } = new();
 }

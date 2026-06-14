@@ -11,7 +11,11 @@ public class AttendanceRecord : TenantEntity
     public DateTime Date { get; set; }
     public AttendanceStatus Status { get; set; }
 
-    /// <summary>Origin of this record, e.g. "LeaveRequest" / "AttendanceCorrection".</summary>
+    /// <summary>Punch in/out times (set by Missing Punch / Attendance Correction requests).</summary>
+    public DateTime? CheckIn { get; set; }
+    public DateTime? CheckOut { get; set; }
+
+    /// <summary>Origin of this record, e.g. "LeaveRequest" / "AttendanceCorrection" / "MissingPunch".</summary>
     public string? Source { get; set; }
     public Guid? ReferenceId { get; set; }
     public string? Notes { get; set; }

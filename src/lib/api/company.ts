@@ -22,6 +22,9 @@ export interface CompanyProfile {
   defaultLanguage?: string | null;
   timeZone?: string | null;
   fiscalYearStart?: string | null;
+  molNumber?: string | null;
+  gosiNumber?: string | null;
+  gosiRate?: number | null;
 }
 
 const EMPTY_ID = "00000000-0000-0000-0000-000000000000";

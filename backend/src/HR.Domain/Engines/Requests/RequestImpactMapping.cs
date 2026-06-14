@@ -16,6 +16,8 @@ public class RequestImpactMapping : BaseEntity
     public bool AffectsExpenses { get; set; }
     public bool AffectsLoans { get; set; }
     public bool CreatesLoanRecord { get; set; }
+    public bool CreatesExpenseRecord { get; set; }
+    public bool CreatesAttendancePunch { get; set; }
     public bool RequiresFinanceApproval { get; set; }
 
     public bool AffectsTimeline { get; set; } = true;

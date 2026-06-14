@@ -66,6 +66,8 @@ public class UpdateEmployeeCommandHandler : IRequestHandler<UpdateEmployeeComman
         employee.Notes = request.Notes;
 
         await SyncAllowancesAsync(employee.Id, request.Allowances, cancellationToken);
+        await SyncAdditionsAsync(employee.Id, request.Additions, cancellationToken);
+        await SyncDeductionsAsync(employee.Id, request.Deductions, cancellationToken);
 
         await _context.SaveChangesAsync(cancellationToken);
 
@@ -115,5 +117,33 @@ public class UpdateEmployeeCommandHandler : IRequestHandler<UpdateEmployeeComman
                 IsActive = true,
             });
         }
+    }
+
+    private async Task SyncAdditionsAsync(Guid employeeId, List<EmployeeCompItemInput> inputs, CancellationToken ct)
+    {
+        var existing = await _context.EmployeeAdditions.Where(a => a.EmployeeId == employeeId).ToListAsync(ct);
+        var wanted = inputs.Where(i => i.TypeId != Guid.Empty).GroupBy(i => i.TypeId).ToDictionary(g => g.Key, g => g.Last().Amount);
+        foreach (var ex in existing)
+        {
+            if (wanted.TryGetValue(ex.AdditionTypeId, out var amount)) { ex.Amount = amount; ex.IsActive = true; }
+            else _context.EmployeeAdditions.Remove(ex);
+        }
+        var have = existing.Select(e => e.AdditionTypeId).ToHashSet();
+        foreach (var kv in wanted.Where(w => !have.Contains(w.Key)))
+            _context.EmployeeAdditions.Add(new EmployeeAddition { EmployeeId = employeeId, AdditionTypeId = kv.Key, Amount = kv.Value, IsActive = true });
+    }
+
+    private async Task SyncDeductionsAsync(Guid employeeId, List<EmployeeCompItemInput> inputs, CancellationToken ct)
+    {
+        var existing = await _context.EmployeeDeductions.Where(a => a.EmployeeId == employeeId).ToListAsync(ct);
+        var wanted = inputs.Where(i => i.TypeId != Guid.Empty).GroupBy(i => i.TypeId).ToDictionary(g => g.Key, g => g.Last().Amount);
+        foreach (var ex in existing)
+        {
+            if (wanted.TryGetValue(ex.DeductionTypeId, out var amount)) { ex.Amount = amount; ex.IsActive = true; }
+            else _context.EmployeeDeductions.Remove(ex);
+        }
+        var have = existing.Select(e => e.DeductionTypeId).ToHashSet();
+        foreach (var kv in wanted.Where(w => !have.Contains(w.Key)))
+            _context.EmployeeDeductions.Add(new EmployeeDeduction { EmployeeId = employeeId, DeductionTypeId = kv.Key, Amount = kv.Value, IsActive = true });
     }
 }

@@ -23,11 +23,22 @@ public static class EmployeeProjection
 
         var empIds = employees.Select(e => e.Id).ToList();
 
-        // Per-employee allowance overrides.
+        // Per-employee allowance / addition / deduction overrides.
         var allowances = await ctx.EmployeeAllowances
             .Where(a => empIds.Contains(a.EmployeeId))
             .Select(a => new { a.Id, a.EmployeeId, a.AllowanceTypeId, a.Amount, a.IsActive })
             .ToListAsync(ct);
+        var additions = await ctx.EmployeeAdditions
+            .Where(a => empIds.Contains(a.EmployeeId))
+            .Select(a => new { a.Id, a.EmployeeId, TypeId = a.AdditionTypeId, a.Amount, a.IsActive })
+            .ToListAsync(ct);
+        var deductions = await ctx.EmployeeDeductions
+            .Where(a => empIds.Contains(a.EmployeeId))
+            .Select(a => new { a.Id, a.EmployeeId, TypeId = a.DeductionTypeId, a.Amount, a.IsActive })
+            .ToListAsync(ct);
+
+        // GOSI rate from the single company profile (default 9.75%).
+        var gosiRate = await ctx.CompanyProfiles.Select(c => (decimal?)c.GosiRate).FirstOrDefaultAsync(ct) ?? 9.75m;
 
         // Gather every master-data id referenced across the page, resolve in one query.
         var mdIds = new HashSet<Guid>();
@@ -38,6 +49,8 @@ public static class EmployeeProjection
             Add(e.PaymentMethodId); Add(e.BankId); Add(e.WorkLocationId); Add(e.LeavePolicyId); Add(e.PayrollGroupId);
         }
         foreach (var a in allowances) mdIds.Add(a.AllowanceTypeId);
+        foreach (var a in additions) mdIds.Add(a.TypeId);
+        foreach (var a in deductions) mdIds.Add(a.TypeId);
 
         var md = await ctx.MasterDataItems
             .Where(m => mdIds.Contains(m.Id))
@@ -72,7 +85,22 @@ public static class EmployeeProjection
                 IsActive = a.IsActive,
             }).ToList());
 
-        return employees.Select(e => new EmployeeDto
+        var additionsByEmp = additions
+            .GroupBy(a => a.EmployeeId)
+            .ToDictionary(g => g.Key, g => g.Select(a => new EmployeeCompItemDto
+            {
+                Id = a.Id, TypeId = a.TypeId, Type = En(a.TypeId), TypeAr = Ar(a.TypeId), Code = Code(a.TypeId),
+                Amount = a.Amount, IsActive = a.IsActive,
+            }).ToList());
+        var deductionsByEmp = deductions
+            .GroupBy(a => a.EmployeeId)
+            .ToDictionary(g => g.Key, g => g.Select(a => new EmployeeCompItemDto
+            {
+                Id = a.Id, TypeId = a.TypeId, Type = En(a.TypeId), TypeAr = Ar(a.TypeId), Code = Code(a.TypeId),
+                Amount = a.Amount, IsActive = a.IsActive,
+            }).ToList());
+
+        var list = employees.Select(e => new EmployeeDto
         {
             Id = e.Id,
             EmployeeNumber = e.EmployeeNumber,
@@ -138,8 +166,23 @@ public static class EmployeeProjection
             PhotoUrl = e.PhotoUrl,
             Notes = e.Notes,
             Allowances = allowancesByEmp.TryGetValue(e.Id, out var al) ? al : new List<EmployeeAllowanceDto>(),
+            Additions = additionsByEmp.TryGetValue(e.Id, out var ad) ? ad : new List<EmployeeCompItemDto>(),
+            Deductions = deductionsByEmp.TryGetValue(e.Id, out var de) ? de : new List<EmployeeCompItemDto>(),
             CreatedAt = e.CreatedAt,
         }).ToList();
+
+        // Compute the salary breakdown (single source of truth): basic + allowances + additions − deductions − GOSI.
+        foreach (var dto in list)
+        {
+            dto.TotalAllowances = dto.Allowances.Where(a => a.IsActive).Sum(a => a.Amount);
+            dto.TotalAdditions = dto.Additions.Where(a => a.IsActive).Sum(a => a.Amount);
+            dto.TotalDeductions = dto.Deductions.Where(a => a.IsActive).Sum(a => a.Amount);
+            dto.GosiRate = gosiRate;
+            dto.GosiAmount = Math.Round(dto.BasicSalary * gosiRate / 100m, 2);
+            dto.GrossSalary = dto.BasicSalary + dto.TotalAllowances + dto.TotalAdditions;
+            dto.NetSalary = dto.GrossSalary - dto.TotalDeductions - dto.GosiAmount;
+        }
+        return list;
     }
 
     private static string? BuildManagerName(string? first, string? last)

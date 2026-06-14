@@ -87,6 +87,17 @@ public class EmployeeDto
     public string? Notes { get; set; }
 
     public List<EmployeeAllowanceDto> Allowances { get; set; } = new();
+    public List<EmployeeCompItemDto> Additions { get; set; } = new();
+    public List<EmployeeCompItemDto> Deductions { get; set; } = new();
+
+    // Backend-computed salary breakdown (single source of truth for chart/waterfall/export).
+    public decimal TotalAllowances { get; set; }
+    public decimal TotalAdditions { get; set; }
+    public decimal TotalDeductions { get; set; }   // excludes GOSI
+    public decimal GosiRate { get; set; }
+    public decimal GosiAmount { get; set; }
+    public decimal GrossSalary { get; set; }       // basic + allowances + additions
+    public decimal NetSalary { get; set; }         // gross - deductions - gosi
 
     public DateTime CreatedAt { get; set; }
 }
@@ -97,6 +108,18 @@ public class EmployeeAllowanceDto
     public Guid AllowanceTypeId { get; set; }
     public string? AllowanceType { get; set; }
     public string? AllowanceTypeAr { get; set; }
+    public decimal Amount { get; set; }
+    public bool IsActive { get; set; }
+}
+
+/// <summary>A resolved salary addition or deduction line (type id + bilingual name + amount).</summary>
+public class EmployeeCompItemDto
+{
+    public Guid Id { get; set; }
+    public Guid TypeId { get; set; }
+    public string? Type { get; set; }
+    public string? TypeAr { get; set; }
+    public string? Code { get; set; }
     public decimal Amount { get; set; }
     public bool IsActive { get; set; }
 }

@@ -24,6 +24,9 @@ public record CompanyProfileDto
     public string? DefaultCurrency { get; init; }
     public string? DefaultLanguage { get; init; }
     public string? TimeZone { get; init; }
+    public string? MolNumber { get; init; }
+    public string? GosiNumber { get; init; }
+    public decimal GosiRate { get; init; }
 }
 
 public record PositionDto
