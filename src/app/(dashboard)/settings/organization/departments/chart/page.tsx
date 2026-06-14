@@ -240,9 +240,9 @@ export default function DepartmentChartPage() {
             minZoom={0.2}
             proOptions={{ hideAttribution: true }}
           >
-            <Background gap={20} color="#27272a" />
+            <Background gap={20} color="#E3DCCF" />
             <Controls showInteractive={false} />
-            <MiniMap pannable zoomable nodeColor="#3f3f46" maskColor="rgba(0,0,0,0.6)" />
+            <MiniMap pannable zoomable nodeColor="#C25A3F" maskColor="rgba(253,251,247,0.6)" />
           </ReactFlow>
         )}
       </div>
