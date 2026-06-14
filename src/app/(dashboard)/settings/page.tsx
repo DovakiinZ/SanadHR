@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronLeft, Database, Inbox, Wallet, CalendarDays, Landmark, FileText, LayoutTemplate } from "lucide-react";
+import { ChevronLeft, Database, Inbox, Wallet, CalendarDays, Landmark, FileText, LayoutTemplate, Bell } from "lucide-react";
 
 const categories = [
   {
@@ -37,6 +37,12 @@ const categories = [
     title: "إعدادات الطلبات",
     description: "أنواع الطلبات، الفئات، النماذج، مسارات الموافقة، اتفاقيات مستوى الخدمة",
     icon: Inbox,
+  },
+  {
+    href: "/settings/notifications",
+    title: "إعدادات التنبيهات",
+    description: "قواعد التنبيهات — تنبيهات انتهاء مستندات الموظفين قبل المدة المحددة، والمستلمون والقنوات",
+    icon: Bell,
   },
 ];
 

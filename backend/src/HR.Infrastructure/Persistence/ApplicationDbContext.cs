@@ -209,6 +209,10 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     // Employee personnel documents (ID/Iqama/passport/contract/… with optional expiry)
     public DbSet<HR.Domain.Engines.Documents.EmployeeDocument> EmployeeDocuments => Set<HR.Domain.Engines.Documents.EmployeeDocument>();
 
+    // Notification rules (admin-configured) + dedup ledger for rule-driven notifications
+    public DbSet<HR.Domain.Engines.Notifications.NotificationRule> NotificationRules => Set<HR.Domain.Engines.Notifications.NotificationRule>();
+    public DbSet<HR.Domain.Engines.Notifications.NotificationDispatch> NotificationDispatches => Set<HR.Domain.Engines.Notifications.NotificationDispatch>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
