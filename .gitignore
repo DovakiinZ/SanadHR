@@ -54,3 +54,8 @@ next-env.d.ts
 # Python bytecode (from .claude skill scripts)
 __pycache__/
 *.pyc
+
+# .NET build/publish artifacts
+backend/**/bin/
+backend/**/obj/
+backend/publish-out/

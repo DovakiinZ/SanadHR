@@ -77,6 +77,9 @@ builder.Services.AddDashboardsModule();
 builder.Services.AddNotificationsModule();
 builder.Services.AddPlatformModule();
 
+// Background: scan employee documents against notification rules and create expiry reminders.
+builder.Services.AddHostedService<HR.Api.Services.DocumentExpiryHostedService>();
+
 // Controllers
 builder.Services.AddControllers()
     .AddApplicationPart(typeof(HR.Modules.Identity.Controllers.AuthController).Assembly)

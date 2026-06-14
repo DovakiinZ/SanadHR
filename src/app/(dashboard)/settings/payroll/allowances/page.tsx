@@ -28,16 +28,22 @@ interface AllowanceMeta {
   calculationType: CalcType;
   defaultValue: number | null;
   percentageBase: PctBase;
+  maxAmount: number | null;
   recurring: boolean;
   gosiApplicable: boolean;
   taxable: boolean;
   allowEmployeeOverride: boolean;
+  excludeFromEndOfService: boolean;
+  excludeFromVacationSettlement: boolean;
+  excludeFromViolation: boolean;
   effectiveDate: string;
 }
 
 const emptyMeta: AllowanceMeta = {
-  calculationType: "Fixed", defaultValue: null, percentageBase: "Basic",
-  recurring: true, gosiApplicable: false, taxable: false, allowEmployeeOverride: true, effectiveDate: "",
+  calculationType: "Fixed", defaultValue: null, percentageBase: "Basic", maxAmount: null,
+  recurring: true, gosiApplicable: false, taxable: false, allowEmployeeOverride: true,
+  excludeFromEndOfService: false, excludeFromVacationSettlement: false, excludeFromViolation: false,
+  effectiveDate: "",
 };
 
 interface AllowanceForm extends AllowanceMeta {
@@ -87,10 +93,14 @@ export default function AllowancesPage() {
         calculationType: form.calculationType,
         defaultValue: form.defaultValue === null || Number.isNaN(form.defaultValue) ? null : Number(form.defaultValue),
         percentageBase: form.percentageBase,
+        maxAmount: form.maxAmount === null || Number.isNaN(form.maxAmount) ? null : Number(form.maxAmount),
         recurring: form.recurring,
         gosiApplicable: form.gosiApplicable,
         taxable: form.taxable,
         allowEmployeeOverride: form.allowEmployeeOverride,
+        excludeFromEndOfService: form.excludeFromEndOfService,
+        excludeFromVacationSettlement: form.excludeFromVacationSettlement,
+        excludeFromViolation: form.excludeFromViolation,
         effectiveDate: form.effectiveDate,
       };
       const payload = {
@@ -237,6 +247,10 @@ export default function AllowancesPage() {
               </div>
             )}
             <div className="space-y-2">
+              <Label className="text-xs font-bold uppercase tracking-wider">الحد الأقصى للمبلغ</Label>
+              <Input type="number" step="any" min={0} value={form.maxAmount ?? ""} onChange={(e) => setForm({ ...form, maxAmount: e.target.value === "" ? null : Number(e.target.value) })} className="bg-secondary border-border" placeholder="بدون حد" />
+            </div>
+            <div className="space-y-2">
               <Label className="text-xs font-bold uppercase tracking-wider">تاريخ السريان</Label>
               <Input type="date" value={form.effectiveDate} onChange={(e) => setForm({ ...form, effectiveDate: e.target.value })} className="bg-secondary border-border" />
             </div>
@@ -247,6 +261,12 @@ export default function AllowancesPage() {
               <label className="flex items-center gap-2 text-sm cursor-pointer border border-border px-3 py-2"><input type="checkbox" checked={form.gosiApplicable} onChange={(e) => setForm({ ...form, gosiApplicable: e.target.checked })} /> خاضع للتأمينات (GOSI)</label>
               <label className="flex items-center gap-2 text-sm cursor-pointer border border-border px-3 py-2"><input type="checkbox" checked={form.taxable} onChange={(e) => setForm({ ...form, taxable: e.target.checked })} /> خاضع للضريبة</label>
               <label className="flex items-center gap-2 text-sm cursor-pointer border border-border px-3 py-2"><input type="checkbox" checked={form.allowEmployeeOverride} onChange={(e) => setForm({ ...form, allowEmployeeOverride: e.target.checked })} /> يسمح بالتجاوز لكل موظف</label>
+            </div>
+            <div className="sm:col-span-2 border-t border-border pt-2 text-xs font-bold uppercase tracking-wider text-primary">الاستثناءات من الحسابات</div>
+            <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <label className="flex items-center gap-2 text-sm cursor-pointer border border-border px-3 py-2"><input type="checkbox" checked={form.excludeFromEndOfService} onChange={(e) => setForm({ ...form, excludeFromEndOfService: e.target.checked })} /> يُستثنى من مكافأة نهاية الخدمة</label>
+              <label className="flex items-center gap-2 text-sm cursor-pointer border border-border px-3 py-2"><input type="checkbox" checked={form.excludeFromVacationSettlement} onChange={(e) => setForm({ ...form, excludeFromVacationSettlement: e.target.checked })} /> يُستثنى من تصفية الإجازات</label>
+              <label className="flex items-center gap-2 text-sm cursor-pointer border border-border px-3 py-2"><input type="checkbox" checked={form.excludeFromViolation} onChange={(e) => setForm({ ...form, excludeFromViolation: e.target.checked })} /> يُستثنى من حساب المخالفات</label>
             </div>
           </div>
           <DialogFooter>
