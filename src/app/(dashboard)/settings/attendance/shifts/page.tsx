@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Loader2, Plus, Pencil, Trash2, Clock, ChevronRight, CalendarClock } from "lucide-react";
+import { Loader2, Plus, Pencil, Trash2, Clock, ChevronRight, CalendarClock, CalendarOff, Save } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { usePermissions } from "@/lib/permissions";
@@ -15,9 +15,15 @@ import {
   weekendLabel,
   type Shift, type ShiftAssignment, type AssignShiftInput,
 } from "@/lib/api/shifts";
+import {
+  listHolidays, createHoliday, updateHoliday, deleteHoliday,
+  getAttendancePolicy, updateAttendancePolicy,
+  type AttendanceHoliday, type AttendancePolicy, type PolicyInput,
+} from "@/lib/api/attendance";
 import { ShiftFormDialog } from "@/components/attendance/shift-form-dialog";
 
-type Tab = "shifts" | "assignments";
+type Tab = "shifts" | "assignments" | "holidays" | "policy";
+const TAB_LABELS: Record<Tab, string> = { shifts: "الورديات", assignments: "التعيينات", holidays: "العطلات الرسمية", policy: "السياسة" };
 
 function todayIso() { return new Date().toISOString().slice(0, 10); }
 function hours(min: number) { return `${Math.floor(min / 60)}:${String(min % 60).padStart(2, "0")}`; }
@@ -62,14 +68,14 @@ export default function ShiftsSettingsPage() {
         )}
       </div>
 
-      <div className="flex items-center gap-1 rounded-lg bg-muted p-0.5 w-fit">
-        {(["shifts", "assignments"] as Tab[]).map((t) => (
+      <div className="flex flex-wrap items-center gap-1 rounded-lg bg-muted p-0.5 w-fit">
+        {(["shifts", "assignments", "holidays", "policy"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
             className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${tab === t ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
           >
-            {t === "shifts" ? "الورديات" : "التعيينات"}
+            {TAB_LABELS[t]}
           </button>
         ))}
       </div>
@@ -132,8 +138,12 @@ export default function ShiftsSettingsPage() {
             </table>
           </div>
         )
-      ) : (
+      ) : tab === "assignments" ? (
         <AssignmentsTab shifts={shifts} canEdit={canEdit} />
+      ) : tab === "holidays" ? (
+        <HolidaysTab canEdit={canEdit} />
+      ) : (
+        <PolicyTab canEdit={canEdit} />
       )}
 
       {(creating || editing) && (
@@ -355,6 +365,175 @@ function AssignmentsTab({ shifts, canEdit }: { shifts: Shift[]; canEdit: boolean
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+const sel = "h-8 w-full rounded-lg border border-border bg-background px-2 text-xs";
+
+function HolidaysTab({ canEdit }: { canEdit: boolean }) {
+  const [rows, setRows] = useState<AttendanceHoliday[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [nameAr, setNameAr] = useState("");
+  const [nameEn, setNameEn] = useState("");
+  const [date, setDate] = useState("");
+  const [recurring, setRecurring] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  function load() { setLoading(true); listHolidays().then(setRows).catch(() => setRows([])).finally(() => setLoading(false)); }
+  useEffect(() => { load(); }, []);
+
+  async function add() {
+    if (!nameAr.trim() || !date) { toast.error("أدخل الاسم والتاريخ"); return; }
+    setSaving(true);
+    try {
+      await createHoliday({ nameAr, nameEn: nameEn || nameAr, date, isRecurring: recurring, isActive: true });
+      toast.success("تمت إضافة العطلة");
+      setNameAr(""); setNameEn(""); setDate(""); setRecurring(false); load();
+    } catch (e) { toast.error((e as Error)?.message || "تعذر الحفظ"); }
+    finally { setSaving(false); }
+  }
+  async function del(h: AttendanceHoliday) {
+    if (!confirm(`حذف العطلة "${h.nameAr}"؟`)) return;
+    try { await deleteHoliday(h.id); toast.success("تم الحذف"); load(); }
+    catch (e) { toast.error((e as Error)?.message || "تعذر الحذف"); }
+  }
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-[20rem_1fr]">
+      {canEdit && (
+        <div className="space-y-3 border border-border bg-card p-4 h-fit">
+          <h3 className="flex items-center gap-1.5 text-sm font-bold"><CalendarOff className="h-4 w-4" /> إضافة عطلة رسمية</h3>
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-muted-foreground">الاسم (عربي)</label>
+            <input value={nameAr} onChange={(e) => setNameAr(e.target.value)} className={sel} />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-muted-foreground">الاسم (إنجليزي)</label>
+            <input value={nameEn} onChange={(e) => setNameEn(e.target.value)} className={sel} dir="ltr" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-muted-foreground">التاريخ</label>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={`${sel} tabular-nums`} />
+          </div>
+          <label className="flex items-center gap-2 text-xs">
+            <input type="checkbox" checked={recurring} onChange={(e) => setRecurring(e.target.checked)} />
+            تتكرر سنوياً (نفس اليوم/الشهر)
+          </label>
+          <Button className="w-full" size="sm" onClick={add} disabled={saving}>{saving && <Loader2 className="animate-spin" />} إضافة</Button>
+        </div>
+      )}
+
+      <div className={canEdit ? "" : "lg:col-span-2"}>
+        {loading ? (
+          <div className="flex h-40 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+        ) : rows.length === 0 ? (
+          <div className="flex flex-col items-center justify-center border border-dashed border-border p-12 text-center">
+            <CalendarOff className="mb-3 h-10 w-10 text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">لا توجد عطلات رسمية</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto border border-border bg-card">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-right text-xs text-muted-foreground">
+                  <th className="px-3 py-2 font-medium">العطلة</th>
+                  <th className="px-3 py-2 font-medium">التاريخ</th>
+                  <th className="px-3 py-2 font-medium">التكرار</th>
+                  <th className="px-3 py-2 font-medium">الحالة</th>
+                  <th className="px-3 py-2 font-medium"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((h) => (
+                  <tr key={h.id} className="border-b border-border/40 hover:bg-muted/30">
+                    <td className="px-3 py-2">
+                      <div className="font-medium">{h.nameAr}</div>
+                      <div className="text-xs text-muted-foreground">{h.nameEn}</div>
+                    </td>
+                    <td className="px-3 py-2 tabular-nums text-muted-foreground">{h.date}</td>
+                    <td className="px-3 py-2 text-xs">{h.isRecurring ? "سنوية" : "لمرة واحدة"}</td>
+                    <td className="px-3 py-2">
+                      {h.isActive
+                        ? <span className="rounded-md bg-green-500/10 px-2 py-0.5 text-xs text-green-600">نشطة</span>
+                        : <span className="rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground">معطّلة</span>}
+                    </td>
+                    <td className="px-3 py-2">
+                      {canEdit && <Button variant="ghost" size="icon-xs" onClick={() => del(h)}><Trash2 /></Button>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PolicyTab({ canEdit }: { canEdit: boolean }) {
+  const [p, setP] = useState<AttendancePolicy | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { getAttendancePolicy().then(setP).catch(() => {}).finally(() => setLoading(false)); }, []);
+  function set<K extends keyof PolicyInput>(k: K, v: PolicyInput[K]) { setP((prev) => (prev ? { ...prev, [k]: v } : prev)); }
+
+  async function save() {
+    if (!p) return;
+    setSaving(true);
+    try {
+      const u = await updateAttendancePolicy({
+        defaultGraceMinutes: p.defaultGraceMinutes, roundingMinutes: p.roundingMinutes,
+        autoMarkAbsent: p.autoMarkAbsent, countOvertime: p.countOvertime,
+      });
+      setP(u);
+      toast.success("تم حفظ السياسة");
+    } catch (e) { toast.error((e as Error)?.message || "تعذر الحفظ"); }
+    finally { setSaving(false); }
+  }
+
+  if (loading || !p) return <div className="flex h-40 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
+
+  return (
+    <div className="max-w-xl space-y-4 border border-border bg-card p-5">
+      <p className="text-sm text-muted-foreground">قواعد عامة تُطبَّق على كل الورديات عند عدم تحديدها في الوردية نفسها.</p>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1">
+          <label className="text-xs font-bold text-muted-foreground">فترة السماح الافتراضية (دقائق)</label>
+          <input type="number" min={0} value={p.defaultGraceMinutes} disabled={!canEdit}
+            onChange={(e) => set("defaultGraceMinutes", Number(e.target.value) || 0)}
+            className="h-9 w-full rounded-lg border border-border bg-background px-2 text-sm" />
+          <p className="text-[0.7rem] text-muted-foreground">تُستخدم عندما لا تحدد الوردية فترة سماح.</p>
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-bold text-muted-foreground">تقريب ساعات العمل (دقائق)</label>
+          <input type="number" min={0} value={p.roundingMinutes} disabled={!canEdit}
+            onChange={(e) => set("roundingMinutes", Number(e.target.value) || 0)}
+            className="h-9 w-full rounded-lg border border-border bg-background px-2 text-sm" />
+          <p className="text-[0.7rem] text-muted-foreground">0 = بدون تقريب (مثال: 5 أو 15).</p>
+        </div>
+      </div>
+      <label className="flex items-center justify-between rounded-lg border border-border p-3">
+        <div>
+          <span className="text-sm font-medium">احتساب الغياب تلقائياً</span>
+          <p className="text-xs text-muted-foreground">تعليم أيام العمل بدون بصمة كـ"غائب".</p>
+        </div>
+        <input type="checkbox" checked={p.autoMarkAbsent} disabled={!canEdit} onChange={(e) => set("autoMarkAbsent", e.target.checked)} className="h-4 w-4" />
+      </label>
+      <label className="flex items-center justify-between rounded-lg border border-border p-3">
+        <div>
+          <span className="text-sm font-medium">احتساب الوقت الإضافي</span>
+          <p className="text-xs text-muted-foreground">يُحتسب فقط للورديات التي تسمح بالإضافي.</p>
+        </div>
+        <input type="checkbox" checked={p.countOvertime} disabled={!canEdit} onChange={(e) => set("countOvertime", e.target.checked)} className="h-4 w-4" />
+      </label>
+      {canEdit && (
+        <div className="flex justify-end">
+          <Button onClick={save} disabled={saving}>{saving ? <Loader2 className="animate-spin" /> : <Save />} حفظ السياسة</Button>
+        </div>
+      )}
     </div>
   );
 }

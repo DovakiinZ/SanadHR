@@ -75,6 +75,19 @@ public class AttendancePolicyConfiguration : IEntityTypeConfiguration<Attendance
     }
 }
 
+public class AttendanceHolidayConfiguration : IEntityTypeConfiguration<AttendanceHoliday>
+{
+    public void Configure(EntityTypeBuilder<AttendanceHoliday> builder)
+    {
+        builder.ToTable("attendance_holidays");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.NameAr).HasMaxLength(150).IsRequired();
+        builder.Property(x => x.NameEn).HasMaxLength(150).IsRequired();
+        builder.HasIndex(x => x.TenantId);
+        builder.HasIndex(x => new { x.TenantId, x.Date });
+    }
+}
+
 public class AttendanceAuditLogConfiguration : IEntityTypeConfiguration<AttendanceAuditLog>
 {
     public void Configure(EntityTypeBuilder<AttendanceAuditLog> builder)

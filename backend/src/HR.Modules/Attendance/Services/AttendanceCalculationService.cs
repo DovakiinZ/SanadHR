@@ -16,16 +16,22 @@ public sealed class AttendanceCalcResult
     public bool IsFlexible { get; set; }
 }
 
+/// <summary>Tenant attendance-policy values that tune the calculation (defaults when null).</summary>
+public readonly record struct AttendancePolicySettings(
+    int DefaultGraceMinutes, int RoundingMinutes, bool CountOvertime, bool AutoMarkAbsent);
+
 public interface IAttendanceCalculationService
 {
     bool IsWeekend(Shift? shift, DateTime date);
 
     /// <summary>Pure, server-side calculation for a single employee/day. Pass the resolved shift
-    /// (null = default 8h, no fixed schedule), the day's first check-in / last check-out, and any
-    /// excused-day flags. Late/shortage/overtime are derived from the shift's rules and grace windows.</summary>
+    /// (null = default 8h, no fixed schedule), the day's first check-in / last check-out, excused-day
+    /// flags, and the tenant policy. Late/shortage/overtime are derived from the shift's rules and
+    /// grace windows; the policy supplies a fallback grace, worked-minute rounding, and overtime gate.</summary>
     AttendanceCalcResult Calculate(
         Shift? shift, DateTime date, DateTime? checkIn, DateTime? checkOut,
-        bool isLeave = false, bool isHoliday = false, bool isWorkFromHome = false);
+        bool isLeave = false, bool isHoliday = false, bool isWorkFromHome = false,
+        AttendancePolicySettings? policy = null);
 }
 
 public sealed class AttendanceCalculationService : IAttendanceCalculationService
@@ -41,7 +47,8 @@ public sealed class AttendanceCalculationService : IAttendanceCalculationService
 
     public AttendanceCalcResult Calculate(
         Shift? shift, DateTime date, DateTime? checkIn, DateTime? checkOut,
-        bool isLeave = false, bool isHoliday = false, bool isWorkFromHome = false)
+        bool isLeave = false, bool isHoliday = false, bool isWorkFromHome = false,
+        AttendancePolicySettings? policy = null)
     {
         var required = shift?.RequiredMinutes ?? DefaultRequiredMinutes;
         var breakMin = shift?.BreakMinutes ?? 0;
@@ -85,20 +92,25 @@ public sealed class AttendanceCalculationService : IAttendanceCalculationService
         var gross = (int)Math.Round((outT - inT).TotalMinutes);
         if (gross < 0) gross += 24 * 60; // overnight
         var worked = Math.Max(0, gross - breakMin);
+        // Optional worked-minute rounding (policy), e.g. round to the nearest 5/15 minutes.
+        if (policy is { RoundingMinutes: > 0 } pr)
+            worked = (int)(Math.Round((double)worked / pr.RoundingMinutes) * pr.RoundingMinutes);
         r.WorkedMinutes = worked;
 
-        // Lateness only applies to fixed shifts.
+        // Lateness only applies to fixed shifts. Grace falls back to the policy default when the shift
+        // doesn't set one.
         if (!flexible && shift is not null)
         {
+            var graceAfterStart = shift.GraceAfterStartMinutes > 0 ? shift.GraceAfterStartMinutes : (policy?.DefaultGraceMinutes ?? 0);
             var scheduledStart = date.Date.Add(shift.StartTime.ToTimeSpan());
-            var allowedStart = scheduledStart.AddMinutes(shift.GraceAfterStartMinutes);
+            var allowedStart = scheduledStart.AddMinutes(graceAfterStart);
             var lateMin = (int)Math.Round((inT - allowedStart).TotalMinutes);
             r.LateMinutes = Math.Max(0, lateMin);
         }
 
         r.ShortageMinutes = Math.Max(0, required - worked);
 
-        var overtimeAllowed = shift?.OvertimeAllowed ?? false;
+        var overtimeAllowed = (shift?.OvertimeAllowed ?? false) && (policy?.CountOvertime ?? true);
         if (overtimeAllowed)
             r.OvertimeMinutes = Math.Max(0, worked - required);
 

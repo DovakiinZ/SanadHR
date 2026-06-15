@@ -78,6 +78,9 @@ public sealed class AttendanceService : IAttendanceService
             .GroupBy(r => (r.EmployeeId, r.Date.Date))
             .ToDictionary(g => g.Key, g => g.First());
 
+        var holidays = await LoadHolidayDatesAsync(from, to, ct);
+        var policy = await LoadPolicyAsync(ct);
+
         var rows = new List<AttendanceDayDto>();
         for (var d = from; d <= to; d = d.AddDays(1))
         {
@@ -87,7 +90,7 @@ public sealed class AttendanceService : IAttendanceService
                 if (filter.ShiftId is { } sid && shift?.Id != sid) continue;
 
                 recByKey.TryGetValue((e.Id, d), out var rec);
-                var dto = BuildDay(e, d, shift, rec, today);
+                var dto = BuildDay(e, d, shift, rec, today, holidays.Contains(d.Date), policy);
 
                 if (filter.Status is { Length: > 0 } st && !string.Equals(dto.Status, st, StringComparison.OrdinalIgnoreCase))
                     continue;
@@ -98,20 +101,22 @@ public sealed class AttendanceService : IAttendanceService
         return rows;
     }
 
-    private AttendanceDayDto BuildDay(EmpRow e, DateTime date, Shift? shift, AttendanceRecord? rec, DateTime today)
+    private AttendanceDayDto BuildDay(EmpRow e, DateTime date, Shift? shift, AttendanceRecord? rec, DateTime today,
+        bool isHolidayDate, AttendancePolicySettings policy)
     {
         var isLeave = rec is not null && (rec.Status == AttendanceStatus.OnLeave || rec.Source == AttendanceSources.LeaveRequest);
-        var isHoliday = rec is not null && rec.Status == AttendanceStatus.Holiday;
+        var isHoliday = isHolidayDate || (rec is not null && rec.Status == AttendanceStatus.Holiday);
         var isWfh = rec is not null && (rec.Status == AttendanceStatus.WorkFromHome || rec.Status == AttendanceStatus.Remote);
 
         var ci = isLeave ? null : rec?.CheckIn;
         var co = isLeave ? null : rec?.CheckOut;
 
-        var calc = _calc.Calculate(shift, date, ci, co, isLeave, isHoliday, isWfh);
+        var calc = _calc.Calculate(shift, date, ci, co, isLeave, isHoliday, isWfh, policy);
         var statusStr = calc.Status.ToString();
 
-        // Don't penalise future working days with no punches as "Absent".
-        if (rec is null && calc.Status == AttendanceStatus.Absent && date > today)
+        // Don't penalise future working days, or — when the policy disables auto-absent — past days with
+        // no punches, as "Absent".
+        if (rec is null && calc.Status == AttendanceStatus.Absent && (date > today || !policy.AutoMarkAbsent))
         {
             statusStr = "Scheduled";
             calc.ShortageMinutes = 0;
@@ -191,7 +196,9 @@ public sealed class AttendanceService : IAttendanceService
         var shifts = await _db.Shifts.AsNoTracking().ToListAsync(ct);
         var shift = _resolver.Resolve(assignments, shifts.ToDictionary(s => s.Id), e.Scope, rec.Date);
 
-        var day = BuildDay(e, rec.Date, shift, rec, DateTime.UtcNow.Date);
+        var policy = await LoadPolicyAsync(ct);
+        var isHolidayDate = (await LoadHolidayDatesAsync(rec.Date, rec.Date, ct)).Contains(rec.Date.Date);
+        var day = BuildDay(e, rec.Date, shift, rec, DateTime.UtcNow.Date, isHolidayDate, policy);
 
         var punches = await _db.AttendancePunches.AsNoTracking()
             .Where(p => p.EmployeeId == rec.EmployeeId && p.PunchTime >= rec.Date && p.PunchTime < rec.Date.AddDays(1))
@@ -287,7 +294,10 @@ public sealed class AttendanceService : IAttendanceService
         var shift = _resolver.Resolve(assignments, shifts.ToDictionary(s => s.Id), scope, rec.Date);
 
         var isLeave = rec.Status == AttendanceStatus.OnLeave || rec.Source == AttendanceSources.LeaveRequest;
-        var calc = _calc.Calculate(shift, rec.Date, isLeave ? null : rec.CheckIn, isLeave ? null : rec.CheckOut, isLeave, rec.Status == AttendanceStatus.Holiday);
+        var policy = await LoadPolicyAsync(ct);
+        var isHolidayDate = (await LoadHolidayDatesAsync(rec.Date, rec.Date, ct)).Contains(rec.Date.Date);
+        var calc = _calc.Calculate(shift, rec.Date, isLeave ? null : rec.CheckIn, isLeave ? null : rec.CheckOut,
+            isLeave, rec.Status == AttendanceStatus.Holiday || isHolidayDate, false, policy);
 
         rec.ShiftId = shift?.Id;
         rec.IsFlexible = calc.IsFlexible;
@@ -327,6 +337,31 @@ public sealed class AttendanceService : IAttendanceService
                           BranchId = e.BranchId, BranchName = b != null ? (b.NameAr ?? b.Name) : null,
                           JobTitleId = e.JobTitleId, JobTitleName = p != null ? (p.NameAr ?? p.NameEn) : null,
                       }).ToListAsync(ct);
+    }
+
+    /// <summary>Resolve which dates in [from,to] are official holidays (exact + recurring month/day).</summary>
+    private async Task<HashSet<DateTime>> LoadHolidayDatesAsync(DateTime from, DateTime to, CancellationToken ct)
+    {
+        var holidays = await _db.AttendanceHolidays.AsNoTracking().Where(h => h.IsActive).ToListAsync(ct);
+        var set = new HashSet<DateTime>();
+        if (holidays.Count == 0) return set;
+        for (var d = from.Date; d <= to.Date; d = d.AddDays(1))
+            foreach (var h in holidays)
+                if (h.IsRecurring ? (h.Date.Month == d.Month && h.Date.Day == d.Day) : h.Date.Date == d.Date)
+                {
+                    set.Add(d);
+                    break;
+                }
+        return set;
+    }
+
+    private async Task<AttendancePolicySettings> LoadPolicyAsync(CancellationToken ct)
+    {
+        var p = await _db.AttendancePolicies.AsNoTracking()
+            .Where(x => x.IsActive).OrderByDescending(x => x.IsDefault).FirstOrDefaultAsync(ct);
+        return p is null
+            ? new AttendancePolicySettings(0, 0, true, true)
+            : new AttendancePolicySettings(p.DefaultGraceMinutes, p.RoundingMinutes, p.CountOvertime, p.AutoMarkAbsent);
     }
 
     private void AddAudit(AttendanceRecord rec, string action, string ar, string en)

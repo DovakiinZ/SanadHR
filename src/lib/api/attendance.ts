@@ -244,3 +244,60 @@ export function fmtTime(s?: string | null): string {
   const d = new Date(s);
   return isNaN(d.getTime()) ? "—" : d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
+
+// ── Attendance settings: holidays + policy ─────────────────────────────────
+
+export interface AttendanceHoliday {
+  id: string;
+  nameAr: string;
+  nameEn: string;
+  date: string; // yyyy-MM-dd
+  isRecurring: boolean;
+  isActive: boolean;
+}
+
+export interface HolidayInput {
+  nameAr: string;
+  nameEn: string;
+  date: string;
+  isRecurring: boolean;
+  isActive: boolean;
+}
+
+export interface AttendancePolicy {
+  id: string;
+  nameAr: string;
+  nameEn: string;
+  defaultGraceMinutes: number;
+  roundingMinutes: number;
+  autoMarkAbsent: boolean;
+  countOvertime: boolean;
+  isActive: boolean;
+}
+
+export interface PolicyInput {
+  defaultGraceMinutes: number;
+  roundingMinutes: number;
+  autoMarkAbsent: boolean;
+  countOvertime: boolean;
+}
+
+export async function listHolidays(): Promise<AttendanceHoliday[]> {
+  return (await apiFetch<AttendanceHoliday[]>("/api/attendance/holidays")) ?? [];
+}
+export function createHoliday(body: HolidayInput) {
+  return apiFetch<AttendanceHoliday>("/api/attendance/holidays", { method: "POST", body });
+}
+export function updateHoliday(id: string, body: HolidayInput) {
+  return apiFetch<AttendanceHoliday>(`/api/attendance/holidays/${id}`, { method: "PUT", body });
+}
+export function deleteHoliday(id: string) {
+  return apiFetch<unknown>(`/api/attendance/holidays/${id}`, { method: "DELETE" });
+}
+
+export function getAttendancePolicy(): Promise<AttendancePolicy> {
+  return apiFetch<AttendancePolicy>("/api/attendance/policy");
+}
+export function updateAttendancePolicy(body: PolicyInput): Promise<AttendancePolicy> {
+  return apiFetch<AttendancePolicy>("/api/attendance/policy", { method: "PUT", body });
+}
