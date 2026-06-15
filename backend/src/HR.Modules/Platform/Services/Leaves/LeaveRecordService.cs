@@ -176,7 +176,7 @@ public sealed class LeaveRecordService : ILeaveRecordService
         foreach (var empId in empIds)
         {
             var affects = rules.Paid && days > 0;
-            var before = await RemainingAsync(empId, req.LeaveTypeId, year, ct);
+            var before = await RemainingWithDefaultAsync(empId, req.LeaveTypeId, year, (decimal)rules.AnnualBalance, ct);
             var after = before;
             if (affects) after = await AdjustBalanceAsync(empId, req.LeaveTypeId, year, days, (decimal)(rules.AnnualBalance), "تعيين إجازة", null, ct);
 
@@ -237,7 +237,7 @@ public sealed class LeaveRecordService : ILeaveRecordService
 
         // Restore the old deduction, then deduct the new one (handles a leave-type change).
         if (oldAffects) await AdjustBalanceAsync(r.EmployeeId, oldType, oldStart.Year, -oldDays, 30m, "تعديل إجازة - استرجاع", r.Id, ct);
-        var before = await RemainingAsync(r.EmployeeId, newType, newStart.Year, ct);
+        var before = await RemainingWithDefaultAsync(r.EmployeeId, newType, newStart.Year, (decimal)rules.AnnualBalance, ct);
         var after = before;
         if (newAffects) after = await AdjustBalanceAsync(r.EmployeeId, newType, newStart.Year, newDays, (decimal)rules.AnnualBalance, "تعديل إجازة - خصم", r.Id, ct);
 
@@ -437,6 +437,17 @@ public sealed class LeaveRecordService : ILeaveRecordService
         var bal = await _db.LeaveBalances.FirstOrDefaultAsync(b => b.EmployeeId == employeeId && b.LeaveTypeId == leaveTypeId && b.Year == year, ct);
         if (bal is null) return 0m;
         return bal.EntitledDays + bal.CarriedForwardDays - bal.UsedDays;
+    }
+
+    /// <summary>Remaining balance, falling back to the leave type's default annual entitlement when the
+    /// employee has no balance row yet (so "balance before" is the real entitlement, not 0).</summary>
+    private async Task<decimal> RemainingWithDefaultAsync(Guid employeeId, Guid leaveTypeId, int year, decimal defaultEntitled, CancellationToken ct)
+    {
+        var bal = await _db.LeaveBalances.FirstOrDefaultAsync(b => b.EmployeeId == employeeId && b.LeaveTypeId == leaveTypeId && b.Year == year, ct);
+        var entitled = bal?.EntitledDays ?? defaultEntitled;
+        var carried = bal?.CarriedForwardDays ?? 0m;
+        var used = bal?.UsedDays ?? 0m;
+        return entitled + carried - used;
     }
 
     /// <summary>Apply a change of <paramref name="deltaDays"/> used-days (positive = deduct, negative =
