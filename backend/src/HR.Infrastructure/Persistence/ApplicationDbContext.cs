@@ -197,6 +197,13 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
 
     // Leave / Attendance / Notifications (request impact targets)
     public DbSet<HR.Domain.Engines.Leave.LeaveBalance> LeaveBalances => Set<HR.Domain.Engines.Leave.LeaveBalance>();
+
+    // Leave records engine (HR-managed approved/assigned leave)
+    public DbSet<HR.Domain.Engines.Leave.LeaveRecord> LeaveRecords => Set<HR.Domain.Engines.Leave.LeaveRecord>();
+    public DbSet<HR.Domain.Engines.Leave.LeaveBalanceTransaction> LeaveBalanceTransactions => Set<HR.Domain.Engines.Leave.LeaveBalanceTransaction>();
+    public DbSet<HR.Domain.Engines.Leave.LeaveAssignment> LeaveAssignments => Set<HR.Domain.Engines.Leave.LeaveAssignment>();
+    public DbSet<HR.Domain.Engines.Leave.LeaveCancellation> LeaveCancellations => Set<HR.Domain.Engines.Leave.LeaveCancellation>();
+    public DbSet<HR.Domain.Engines.Leave.LeaveAuditLog> LeaveAuditLogs => Set<HR.Domain.Engines.Leave.LeaveAuditLog>();
     public DbSet<HR.Domain.Engines.Attendance.AttendanceRecord> AttendanceRecords => Set<HR.Domain.Engines.Attendance.AttendanceRecord>();
 
     // Attendance & Shift engine

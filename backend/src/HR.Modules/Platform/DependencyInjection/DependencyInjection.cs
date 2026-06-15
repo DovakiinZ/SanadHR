@@ -59,6 +59,10 @@ public static class DependencyInjection
         services.AddScoped<HR.Modules.Platform.Services.Requests.IRequestSeeder,
             HR.Modules.Platform.Services.Requests.RequestSeeder>();
 
+        // HR-managed leave records engine
+        services.AddScoped<HR.Modules.Platform.Services.Leaves.ILeaveRecordService,
+            HR.Modules.Platform.Services.Leaves.LeaveRecordService>();
+
         // Official document rendering (QuestPDF) + token resolution + mapping-driven generation
         services.AddScoped<HR.Modules.Platform.Services.Documents.IDocumentTokenResolver,
             HR.Modules.Platform.Services.Documents.DocumentTokenResolver>();

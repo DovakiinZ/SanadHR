@@ -294,34 +294,78 @@ public sealed class RequestEngine : IRequestEngine
             rules = _leave.GetRules(leaveItem?.MetadataJson);
         }
 
-        // Deduct balance only for PAID leave (unpaid leave still marks attendance below).
-        if (impact.AffectsLeaveBalance && instance.LeaveTypeId is { } leaveTypeId && instance.DaysCount is { } days && days > 0 && (rules?.Paid ?? true))
+        // Leave: deduct balance (paid only), create the canonical LeaveRecord + balance ledger entry,
+        // and mark attendance. The LeaveRecord powers the HR Leaves page (balance before/after, print…).
+        if (instance.LeaveTypeId is { } leaveTypeId && instance.StartDate is { } lstart && instance.EndDate is { } lend)
         {
-            var year = (instance.StartDate ?? DateTime.UtcNow).Year;
+            var days = instance.DaysCount ?? 0m;
+            var year = lstart.Year;
+            var affectsBalance = impact.AffectsLeaveBalance && days > 0 && (rules?.Paid ?? true);
+
             var bal = await _db.LeaveBalances.FirstOrDefaultAsync(
                 b => b.EmployeeId == employee.Id && b.LeaveTypeId == leaveTypeId && b.Year == year, ct);
-            if (bal is null)
-            {
-                bal = new LeaveBalance { EmployeeId = employee.Id, LeaveTypeId = leaveTypeId, Year = year, EntitledDays = (decimal)(rules?.AnnualBalance ?? 30), UsedDays = 0m };
-                _db.LeaveBalances.Add(bal);
-            }
-            bal.UsedDays += days;
-        }
+            var entitled = bal?.EntitledDays ?? (decimal)(rules?.AnnualBalance ?? 30);
+            var balanceBefore = (bal?.EntitledDays ?? entitled) + (bal?.CarriedForwardDays ?? 0m) - (bal?.UsedDays ?? 0m);
+            var balanceAfter = balanceBefore;
 
-        var marksAttendance = impact.AffectsAttendance && (rules?.AffectsAttendance ?? true);
-        if (marksAttendance && instance.StartDate is { } start && instance.EndDate is { } end && end >= start)
-        {
-            for (var d = start.Date; d <= end.Date; d = d.AddDays(1))
+            if (affectsBalance)
             {
-                _db.AttendanceRecords.Add(new AttendanceRecord
+                if (bal is null)
                 {
-                    EmployeeId = employee.Id,
-                    Date = DateTime.SpecifyKind(d, DateTimeKind.Utc),
-                    Status = AttendanceStatus.OnLeave,
-                    Source = "LeaveRequest",
-                    ReferenceId = instance.Id,
-                });
+                    bal = new LeaveBalance { EmployeeId = employee.Id, LeaveTypeId = leaveTypeId, Year = year, EntitledDays = entitled, UsedDays = 0m };
+                    _db.LeaveBalances.Add(bal);
+                }
+                bal.UsedDays += days;
+                balanceAfter = bal.EntitledDays + bal.CarriedForwardDays - bal.UsedDays;
             }
+
+            var record = new LeaveRecord
+            {
+                RecordNumber = await NextLeaveNumberAsync(ct),
+                EmployeeId = employee.Id,
+                LeaveTypeId = leaveTypeId,
+                StartDate = lstart,
+                EndDate = lend,
+                DaysCount = days,
+                AffectsBalance = affectsBalance,
+                BalanceBefore = balanceBefore,
+                BalanceAfter = balanceAfter,
+                Status = LeaveRecordStatus.Approved,
+                Source = LeaveRecordSource.Request,
+                RequestInstanceId = instance.Id,
+                ApprovedByUserId = _user.UserId,
+                ApprovedAt = DateTime.UtcNow,
+                Notes = instance.DecisionNote,
+            };
+            _db.LeaveRecords.Add(record);
+
+            if (affectsBalance)
+                _db.LeaveBalanceTransactions.Add(new LeaveBalanceTransaction
+                {
+                    EmployeeId = employee.Id, LeaveTypeId = leaveTypeId, Year = year, LeaveRecordId = record.Id,
+                    Delta = -days, BalanceAfter = balanceAfter, Reason = "Leave request approved",
+                    ActorUserId = _user.UserId, At = DateTime.UtcNow,
+                });
+
+            _db.LeaveAuditLogs.Add(new LeaveAuditLog
+            {
+                LeaveRecordId = record.Id, EmployeeId = employee.Id, Action = "Created",
+                DetailsAr = $"إنشاء سجل إجازة من الطلب {instance.RequestNumber}",
+                DetailsEn = $"Leave record created from request {instance.RequestNumber}",
+                ActorUserId = _user.UserId, At = DateTime.UtcNow,
+            });
+
+            var marksAttendance = impact.AffectsAttendance && (rules?.AffectsAttendance ?? true);
+            if (marksAttendance && lend >= lstart)
+                for (var d = lstart.Date; d <= lend.Date; d = d.AddDays(1))
+                    _db.AttendanceRecords.Add(new AttendanceRecord
+                    {
+                        EmployeeId = employee.Id,
+                        Date = DateTime.SpecifyKind(d, DateTimeKind.Utc),
+                        Status = AttendanceStatus.OnLeave,
+                        Source = "LeaveRequest",
+                        ReferenceId = instance.Id,
+                    });
         }
 
         // Non-leave targets (expense / loan / attendance punch / correction) read submitted form values.
@@ -564,6 +608,13 @@ public sealed class RequestEngine : IRequestEngine
         var year = DateTime.UtcNow.Year;
         var count = await _db.RequestInstances.CountAsync(ct);
         return $"REQ-{year}-{(count + 1):D6}";
+    }
+
+    private async Task<string> NextLeaveNumberAsync(CancellationToken ct)
+    {
+        var year = DateTime.UtcNow.Year;
+        var count = await _db.LeaveRecords.CountAsync(ct);
+        return $"LV-{year}-{(count + 1):D6}";
     }
 
     private static string? Val(IReadOnlyList<RequestValueInput> values, string code)
