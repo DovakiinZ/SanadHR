@@ -87,6 +87,7 @@ builder.Services.AddControllers()
     .AddApplicationPart(typeof(HR.Modules.Employees.Controllers.EmployeesController).Assembly)
     .AddApplicationPart(typeof(HR.Modules.Tasks.Controllers.TasksController).Assembly)
     .AddApplicationPart(typeof(HR.Modules.Settings.Controllers.SettingsController).Assembly)
+    .AddApplicationPart(typeof(HR.Modules.Attendance.Controllers.AttendanceController).Assembly)
     .AddApplicationPart(typeof(HR.Modules.Platform.Controllers.MetadataController).Assembly);
 
 // CORS

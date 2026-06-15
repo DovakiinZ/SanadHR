@@ -198,6 +198,14 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     // Leave / Attendance / Notifications (request impact targets)
     public DbSet<HR.Domain.Engines.Leave.LeaveBalance> LeaveBalances => Set<HR.Domain.Engines.Leave.LeaveBalance>();
     public DbSet<HR.Domain.Engines.Attendance.AttendanceRecord> AttendanceRecords => Set<HR.Domain.Engines.Attendance.AttendanceRecord>();
+
+    // Attendance & Shift engine
+    public DbSet<HR.Domain.Engines.Attendance.Shift> Shifts => Set<HR.Domain.Engines.Attendance.Shift>();
+    public DbSet<HR.Domain.Engines.Attendance.ShiftAssignment> ShiftAssignments => Set<HR.Domain.Engines.Attendance.ShiftAssignment>();
+    public DbSet<HR.Domain.Engines.Attendance.AttendancePunch> AttendancePunches => Set<HR.Domain.Engines.Attendance.AttendancePunch>();
+    public DbSet<HR.Domain.Engines.Attendance.AttendanceCorrection> AttendanceCorrections => Set<HR.Domain.Engines.Attendance.AttendanceCorrection>();
+    public DbSet<HR.Domain.Engines.Attendance.AttendancePolicy> AttendancePolicies => Set<HR.Domain.Engines.Attendance.AttendancePolicy>();
+    public DbSet<HR.Domain.Engines.Attendance.AttendanceAuditLog> AttendanceAuditLogs => Set<HR.Domain.Engines.Attendance.AttendanceAuditLog>();
     public DbSet<HR.Domain.Engines.Notifications.Notification> Notifications => Set<HR.Domain.Engines.Notifications.Notification>();
     public DbSet<HR.Domain.Engines.Notifications.EmailNotificationQueue> EmailQueue => Set<HR.Domain.Engines.Notifications.EmailNotificationQueue>();
 

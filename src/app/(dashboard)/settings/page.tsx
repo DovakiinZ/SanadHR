@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronLeft, Database, Inbox, Wallet, CalendarDays, Landmark, FileText, LayoutTemplate, Bell } from "lucide-react";
+import { ChevronLeft, Database, Inbox, Wallet, CalendarDays, Landmark, FileText, LayoutTemplate, Bell, Clock } from "lucide-react";
 
 const categories = [
   {
@@ -25,6 +25,12 @@ const categories = [
     title: "إعدادات الإجازات",
     description: "أنواع الإجازات وقواعدها (مدفوعة/رصيد/مرفقات) وأرصدة الموظفين",
     icon: CalendarDays,
+  },
+  {
+    href: "/settings/attendance/shifts",
+    title: "إعدادات الورديات والحضور",
+    description: "إنشاء الورديات (ثابتة/مرنة) وفترات السماح وقواعد التأخير والإضافي ونهاية الأسبوع، وتعيينها للموظفين والإدارات والفروع",
+    icon: Clock,
   },
   {
     href: "/settings/payroll",
