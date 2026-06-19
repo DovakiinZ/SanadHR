@@ -83,6 +83,11 @@ public class RequestApprovalConfiguration : IEntityTypeConfiguration<RequestAppr
         builder.Property(x => x.StepNameEn).HasMaxLength(200).IsRequired();
         builder.Property(x => x.StepNameAr).HasMaxLength(200).IsRequired();
         builder.Property(x => x.Comment).HasMaxLength(2000);
+        // Step rules — default reject/return ON so existing (pre-migration) approvals keep full actions.
+        builder.Property(x => x.CanReject).HasDefaultValue(true);
+        builder.Property(x => x.CanReturn).HasDefaultValue(true);
+        builder.Property(x => x.CanDelegate).HasDefaultValue(false);
+        builder.Property(x => x.IsOptional).HasDefaultValue(false);
         builder.HasIndex(x => x.AssignedToUserId);
         builder.HasIndex(x => new { x.RequestInstanceId, x.StepOrder });
     }

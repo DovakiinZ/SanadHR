@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\HR.Modules\Workflows\HR.Modules.Workflows.csproj" />
+    <ProjectReference Include="..\..\src\HR.Modules\Platform\HR.Modules.Platform.csproj" />
   </ItemGroup>
 
 </Project>

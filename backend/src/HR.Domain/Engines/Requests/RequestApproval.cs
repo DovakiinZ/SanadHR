@@ -19,5 +19,11 @@ public class RequestApproval : BaseEntity
     public DateTime? DecidedAt { get; set; }
     public DateTime? DueAt { get; set; }   // SLA due date for this approval step
 
+    // Step rules captured from the workflow builder (gate the actions an approver may take).
+    public bool CanReject { get; set; } = true;
+    public bool CanReturn { get; set; } = true;
+    public bool CanDelegate { get; set; }
+    public bool IsOptional { get; set; }
+
     public RequestInstance RequestInstance { get; set; } = null!;
 }

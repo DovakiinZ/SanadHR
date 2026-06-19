@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Inbox, Tags, ChevronLeft } from "lucide-react";
+import { ArrowRight, GitBranch, Inbox, Tags, ChevronLeft, ToggleRight } from "lucide-react";
 
 const modules = [
   {
@@ -7,6 +7,18 @@ const modules = [
     title: "أنواع الطلبات",
     description: "مُنشئ الطلبات بدون كود — النموذج، مسار الموافقة، اتفاقية الخدمة، المستند، والأثر",
     icon: Inbox,
+  },
+  {
+    href: "/settings/requests/workflows",
+    title: "مسارات الموافقات",
+    description: "صمّم سلاسل الاعتماد (المدير، الموارد البشرية، المالية…) باختيارات جاهزة دون كود",
+    icon: GitBranch,
+  },
+  {
+    href: "/settings/requests/activation",
+    title: "الربط والتفعيل",
+    description: "اربط كل نوع طلب بمسار موافقة وقالب مستند، ثم فعّله",
+    icon: ToggleRight,
   },
   {
     href: "/settings/requests/categories",

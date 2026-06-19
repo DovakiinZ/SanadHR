@@ -134,19 +134,63 @@ public class RequestsController : BaseApiController
 
     // ── Admin: bind a print template to a request type (entity-level — drives PDF output) ──
 
-    /// <summary>All request types with their current print-template linkage (admin).</summary>
+    /// <summary>All request types with workflow + default-template assignment and an activation-readiness flag (admin).</summary>
     [HttpGet("types/admin")]
     [RequirePermission("Platform.Documents.View")]
     public async Task<ActionResult<ApiResponse<List<RequestTypeAdminDto>>>> GetTypesAdmin(CancellationToken ct)
     {
-        var types = await _db.RequestTypes
-            .OrderBy(t => t.SortOrder).ThenBy(t => t.NameAr)
-            .Select(t => new RequestTypeAdminDto
-            {
-                Id = t.Id, Code = t.Code, NameAr = t.NameAr, NameEn = t.NameEn,
-                IsActive = t.IsActive, PrintTemplateId = t.PrintTemplateId,
-            }).ToListAsync(ct);
+        var types = await (from t in _db.RequestTypes
+                           join wf in _db.WorkflowDefinitions on t.WorkflowDefinitionId equals wf.Id into wfj
+                           from wf in wfj.DefaultIfEmpty()
+                           join dt in _db.DocumentTemplates on t.PrintTemplateId equals dt.Id into dtj
+                           from dt in dtj.DefaultIfEmpty()
+                           orderby t.SortOrder, t.NameAr
+                           select new RequestTypeAdminDto
+                           {
+                               Id = t.Id, Code = t.Code, NameAr = t.NameAr, NameEn = t.NameEn,
+                               CategoryId = t.CategoryId, IsActive = t.IsActive, IsSystem = t.IsSystem,
+                               FormDefinitionId = t.FormDefinitionId,
+                               WorkflowDefinitionId = t.WorkflowDefinitionId,
+                               WorkflowName = wf != null ? wf.NameAr : null,
+                               PrintTemplateId = t.PrintTemplateId,
+                               PrintTemplateName = dt != null ? dt.NameAr : null,
+                               // Ready to activate when it has a form and an approval workflow assigned.
+                               ActivationReady = t.FormDefinitionId != Guid.Empty && t.WorkflowDefinitionId != null,
+                           }).ToListAsync(ct);
         return OkResponse(types);
+    }
+
+    /// <summary>Assign (or clear) the approval workflow a request type runs — writes the entity FK the engine reads.</summary>
+    [HttpPut("types/{id:guid}/workflow")]
+    [RequirePermission("Platform.Workflows.Edit")]
+    public async Task<ActionResult<ApiResponse>> SetWorkflow(Guid id, [FromBody] SetWorkflowBody body, CancellationToken ct)
+    {
+        var type = await _db.RequestTypes.FirstOrDefaultAsync(t => t.Id == id, ct);
+        if (type is null) return NotFound(ApiResponse.Fail("Request type not found"));
+        if (body.WorkflowDefinitionId is { } wid && !await _db.WorkflowDefinitions.AnyAsync(w => w.Id == wid, ct))
+            return BadRequest(ApiResponse.Fail("Workflow not found"));
+        type.WorkflowDefinitionId = body.WorkflowDefinitionId;
+        await _db.SaveChangesAsync(ct);
+        return OkResponse("Workflow assigned");
+    }
+
+    /// <summary>Activate / deactivate a request type. Activation requires a form and an assigned workflow.</summary>
+    [HttpPut("types/{id:guid}/active")]
+    [RequirePermission("Platform.Workflows.Edit")]
+    public async Task<ActionResult<ApiResponse>> SetActive(Guid id, [FromBody] SetActiveBody body, CancellationToken ct)
+    {
+        var type = await _db.RequestTypes.FirstOrDefaultAsync(t => t.Id == id, ct);
+        if (type is null) return NotFound(ApiResponse.Fail("Request type not found"));
+        if (body.IsActive)
+        {
+            if (type.FormDefinitionId == Guid.Empty)
+                return BadRequest(ApiResponse.Fail("لا يمكن التفعيل: لا يوجد نموذج مرتبط بنوع الطلب"));
+            if (type.WorkflowDefinitionId is null)
+                return BadRequest(ApiResponse.Fail("لا يمكن التفعيل: يجب تعيين مسار موافقة أولاً"));
+        }
+        type.IsActive = body.IsActive;
+        await _db.SaveChangesAsync(ct);
+        return OkResponse(body.IsActive ? "Activated" : "Deactivated");
     }
 
     /// <summary>Link (or clear) the official document template a request type prints.</summary>
@@ -472,9 +516,19 @@ public sealed class RequestTypeAdminDto
     public string Code { get; set; } = null!;
     public string NameAr { get; set; } = null!;
     public string NameEn { get; set; } = null!;
+    public Guid? CategoryId { get; set; }
     public bool IsActive { get; set; }
+    public bool IsSystem { get; set; }
+    public Guid FormDefinitionId { get; set; }
+    public Guid? WorkflowDefinitionId { get; set; }
+    public string? WorkflowName { get; set; }
     public Guid? PrintTemplateId { get; set; }
+    public string? PrintTemplateName { get; set; }
+    public bool ActivationReady { get; set; }
 }
+
+public sealed class SetWorkflowBody { public Guid? WorkflowDefinitionId { get; set; } }
+public sealed class SetActiveBody { public bool IsActive { get; set; } }
 
 public sealed class RequestTypeDto
 {

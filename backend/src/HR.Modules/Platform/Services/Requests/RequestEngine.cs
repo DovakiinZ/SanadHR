@@ -112,7 +112,7 @@ public sealed class RequestEngine : IRequestEngine
         _db.RequestInstances.Add(instance);
 
         // 3) Resolve approval chain from the linked workflow + create a workflow instance
-        var chain = await BuildApprovalChainAsync(type, employee, ct);
+        var chain = await BuildApprovalChainAsync(type, employee, instance, values, ct);
         if (chain.Count > 0)
         {
             var (wfInstanceId, _) = await StartWorkflowAsync(type, instance.Id, ct);
@@ -449,7 +449,8 @@ public sealed class RequestEngine : IRequestEngine
 
     // ── Approval-chain resolution from the linked workflow ──────────────────────
 
-    private async Task<List<RequestApproval>> BuildApprovalChainAsync(RequestType type, HR.Modules.Employees.Entities.Employee employee, CancellationToken ct)
+    private async Task<List<RequestApproval>> BuildApprovalChainAsync(RequestType type, HR.Modules.Employees.Entities.Employee employee,
+        RequestInstance instance, IReadOnlyList<RequestValueInput> values, CancellationToken ct)
     {
         var result = new List<RequestApproval>();
         if (type.WorkflowDefinitionId is not { } wfId) return result;
@@ -464,10 +465,16 @@ public sealed class RequestEngine : IRequestEngine
         catch { cfg = null; }
         if (cfg?.Steps is null) return result;
 
+        // Condition context: a step only joins the chain when ALL its conditions hold. This lets a
+        // business user add rules like "Leave Days > 5 → require HR" without any code.
+        var conditionCtx = BuildConditionContext(employee, instance, values);
+
         foreach (var s in cfg.Steps)
         {
+            if (!RequestConditions.Met(s.Conditions, conditionCtx)) continue;
+
             var approverType = (ApproverType)s.ApproverType;
-            var assignee = await ResolveApproverAsync(approverType, s.SpecificUserId, employee, ct);
+            var assignee = await ResolveApproverAsync(s, employee, ct);
             result.Add(new RequestApproval
             {
                 StepNameAr = s.NameAr,
@@ -475,19 +482,48 @@ public sealed class RequestEngine : IRequestEngine
                 ApproverType = approverType,
                 AssignedToUserId = assignee,
                 Status = RequestApprovalStatus.Pending,
+                CanReject = s.CanReject,
+                CanReturn = s.CanReturn,
+                CanDelegate = s.CanDelegate,
+                IsOptional = !s.Required,
             });
         }
         return result;
     }
 
-    private async Task<Guid?> ResolveApproverAsync(ApproverType type, Guid? specificUserId, HR.Modules.Employees.Entities.Employee employee, CancellationToken ct)
+    // ── No-code condition evaluation ────────────────────────────────────────────
+
+    private static Dictionary<string, string?> BuildConditionContext(
+        HR.Modules.Employees.Entities.Employee employee, RequestInstance instance, IReadOnlyList<RequestValueInput> values)
     {
+        var ctx = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["leaveDays"] = instance.DaysCount?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? Val(values, RequestFieldCodes.Days),
+            ["amount"] = Val(values, RequestFieldCodes.Amount),
+            ["leaveType"] = instance.LeaveTypeId?.ToString() ?? Val(values, RequestFieldCodes.LeaveType),
+            ["department"] = employee.DepartmentId?.ToString(),
+            ["branch"] = employee.BranchId?.ToString(),
+            ["employmentType"] = employee.EmploymentTypeId?.ToString(),
+            ["jobTitle"] = employee.JobTitleId?.ToString(),
+        };
+        // Also expose every submitted form field by its code so conditions can reference any field.
+        foreach (var v in values)
+            if (!string.IsNullOrWhiteSpace(v.FieldCode)) ctx[v.FieldCode] = v.Value;
+        return ctx;
+    }
+
+    private async Task<Guid?> ResolveApproverAsync(WorkflowStepConfig s, HR.Modules.Employees.Entities.Employee employee, CancellationToken ct)
+    {
+        var type = (ApproverType)s.ApproverType;
         Guid? resolved = type switch
         {
-            ApproverType.SpecificUser => specificUserId,
+            // SpecificUser carries either a pre-resolved user id (legacy seeds) or an employee id picked in the builder.
+            ApproverType.SpecificUser => s.SpecificUserId ?? await ManagerUserAsync(s.SpecificEntityId, ct),
             ApproverType.DirectManager => await ManagerUserAsync(employee.ManagerId, ct),
             ApproverType.DepartmentHead => await DepartmentHeadUserAsync(employee.DepartmentId, ct),
             ApproverType.HrManager => await UserByRoleKeywordAsync("HR", ct),
+            ApproverType.Role => await UserByRoleIdAsync(s.SpecificEntityId, ct),
+            ApproverType.ManagerChain => await ManagerChainUserAsync(employee, Math.Max(1, s.ChainLevel), ct),
             _ => null,
         };
         // Guarantee progress: fall back to a tenant admin so a chain never dead-ends.
@@ -515,6 +551,26 @@ public sealed class RequestEngine : IRequestEngine
                       join r in _db.Roles on ur.RoleId equals r.Id
                       where EF.Functions.ILike(r.Name, $"%{keyword}%")
                       select (Guid?)u.Id).FirstOrDefaultAsync(ct);
+    }
+
+    /// <summary>First active member of a specific role (Finance / CEO / any user group picked in the builder).</summary>
+    private async Task<Guid?> UserByRoleIdAsync(Guid? roleId, CancellationToken ct)
+    {
+        if (roleId is not { } rid) return null;
+        var tid = _user.TenantId;
+        return await (from u in _db.Users.Where(u => u.TenantId == tid && u.IsActive)
+                      join ur in _db.UserRoles on u.Id equals ur.UserId
+                      where ur.RoleId == rid
+                      select (Guid?)u.Id).FirstOrDefaultAsync(ct);
+    }
+
+    /// <summary>Walk up the manager chain `levels` times (1 = direct manager) and return that user.</summary>
+    private async Task<Guid?> ManagerChainUserAsync(HR.Modules.Employees.Entities.Employee employee, int levels, CancellationToken ct)
+    {
+        var currentEmpId = employee.ManagerId;
+        for (int i = 1; i < levels && currentEmpId is { } id; i++)
+            currentEmpId = await _db.Employees.Where(e => e.Id == id).Select(e => e.ManagerId).FirstOrDefaultAsync(ct);
+        return await ManagerUserAsync(currentEmpId, ct);
     }
 
     private async Task<Guid?> AdminUserIdAsync(CancellationToken ct)
