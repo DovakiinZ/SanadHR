@@ -178,6 +178,12 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<WorkflowAction> WorkflowActions => Set<WorkflowAction>();
     public DbSet<WorkflowSimulation> WorkflowSimulations => Set<WorkflowSimulation>();
 
+    // Flow Builder Engine (decoupled linked-list approval workflows: definition -> steps -> requests)
+    public DbSet<HR.Domain.Engines.FlowBuilder.WorkflowDefinition> FlowDefinitions => Set<HR.Domain.Engines.FlowBuilder.WorkflowDefinition>();
+    public DbSet<HR.Domain.Engines.FlowBuilder.WorkflowStep> FlowSteps => Set<HR.Domain.Engines.FlowBuilder.WorkflowStep>();
+    public DbSet<HR.Domain.Engines.FlowBuilder.WorkflowRequest> FlowRequests => Set<HR.Domain.Engines.FlowBuilder.WorkflowRequest>();
+    public DbSet<HR.Domain.Engines.FlowBuilder.WorkflowAuditTrail> FlowAuditTrail => Set<HR.Domain.Engines.FlowBuilder.WorkflowAuditTrail>();
+
     // Company Configuration Engine
     public DbSet<CompanyProfile> CompanyProfiles => Set<CompanyProfile>();
     public DbSet<Position> Positions => Set<Position>();

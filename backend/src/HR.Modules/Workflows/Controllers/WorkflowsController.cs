@@ -1,14 +1,3 @@
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
-
-namespace HR.Modules.Workflows.Controllers;
-
-[Authorize]
-[ApiController]
-[Route("api/workflows")]
-public class WorkflowsController : ControllerBase
-{
-    [HttpGet]
-    public IActionResult Get() => StatusCode(StatusCodes.Status501NotImplemented, new { message = "Workflows module not yet implemented" });
-}
+// The placeholder WorkflowsController stub has been replaced by the real
+// WorkflowDefinitionsController (api/workflow-definitions) and
+// WorkflowRequestsController (api/workflow-requests).
