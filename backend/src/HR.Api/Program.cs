@@ -88,7 +88,8 @@ builder.Services.AddControllers()
     .AddApplicationPart(typeof(HR.Modules.Tasks.Controllers.TasksController).Assembly)
     .AddApplicationPart(typeof(HR.Modules.Settings.Controllers.SettingsController).Assembly)
     .AddApplicationPart(typeof(HR.Modules.Attendance.Controllers.AttendanceController).Assembly)
-    .AddApplicationPart(typeof(HR.Modules.Platform.Controllers.MetadataController).Assembly);
+    .AddApplicationPart(typeof(HR.Modules.Platform.Controllers.MetadataController).Assembly)
+    .AddApplicationPart(typeof(HR.Modules.Workflows.Controllers.WorkflowDefinitionsController).Assembly);
 
 // CORS
 builder.Services.AddCors(options =>
@@ -107,6 +108,10 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo { Title = "HR Cloud API", Version = "v1" });
+    // Modular codebase: several modules legitimately share short DTO names (e.g. two
+    // WorkflowDefinitionDto types). Use the full type name as the schema id so Swagger generation
+    // never collides.
+    c.CustomSchemaIds(t => t.FullName?.Replace("+", "."));
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Description = "JWT Authorization header using the Bearer scheme",
