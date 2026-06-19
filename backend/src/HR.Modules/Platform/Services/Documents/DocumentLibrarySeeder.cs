@@ -71,6 +71,25 @@ public sealed class DocumentLibrarySeeder : IDocumentLibrarySeeder
             Spacer(24),
             Sig("hr", "إدارة الموارد البشرية")), ct);
 
+        await Ensure("DOC_LEAVE_RECORD", "Leave Record", "سجل إجازة", pageTemplateId, Layout(
+            Title("سجل إجازة"),
+            Spacer(),
+            P("نُفيد بأن الموظف/ة {{Employee.FullName}} (رقم {{Employee.EmployeeNumber}}) — {{Employee.JobTitle}} بإدارة {{Employee.Department}} — لديه/لديها سجل الإجازة التالي:"),
+            Table(
+                Row("رقم السجل", "{{Leave.RecordNumber}}"),
+                Row("نوع الإجازة", "{{Leave.Type}}"),
+                Row("من تاريخ", "{{Leave.StartDate}}"),
+                Row("إلى تاريخ", "{{Leave.EndDate}}"),
+                Row("عدد الأيام", "{{Leave.Days}}"),
+                Row("الرصيد قبل الإجازة", "{{Leave.BalanceBefore}}"),
+                Row("المخصوم", "{{Leave.DaysDeducted}}"),
+                Row("الرصيد بعد الاعتماد", "{{Leave.BalanceAfter}}"),
+                Row("تاريخ الاعتماد", "{{Leave.ApprovedDate}}"),
+                Row("اعتمدها", "{{Leave.ApprovedBy}}"),
+                Row("ملاحظات", "{{Leave.Notes}}")),
+            Spacer(24),
+            Sig("hr", "إدارة الموارد البشرية")), ct);
+
         await Ensure("DOC_MISSION_LETTER", "Business Trip / Mission Letter", "خطاب مهمة عمل", pageTemplateId, Layout(
             Title("خطاب تكليف بمهمة عمل"),
             Spacer(),

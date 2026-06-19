@@ -203,7 +203,23 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
 
     // Leave / Attendance / Notifications (request impact targets)
     public DbSet<HR.Domain.Engines.Leave.LeaveBalance> LeaveBalances => Set<HR.Domain.Engines.Leave.LeaveBalance>();
+
+    // Leave records engine (HR-managed approved/assigned leave)
+    public DbSet<HR.Domain.Engines.Leave.LeaveRecord> LeaveRecords => Set<HR.Domain.Engines.Leave.LeaveRecord>();
+    public DbSet<HR.Domain.Engines.Leave.LeaveBalanceTransaction> LeaveBalanceTransactions => Set<HR.Domain.Engines.Leave.LeaveBalanceTransaction>();
+    public DbSet<HR.Domain.Engines.Leave.LeaveAssignment> LeaveAssignments => Set<HR.Domain.Engines.Leave.LeaveAssignment>();
+    public DbSet<HR.Domain.Engines.Leave.LeaveCancellation> LeaveCancellations => Set<HR.Domain.Engines.Leave.LeaveCancellation>();
+    public DbSet<HR.Domain.Engines.Leave.LeaveAuditLog> LeaveAuditLogs => Set<HR.Domain.Engines.Leave.LeaveAuditLog>();
     public DbSet<HR.Domain.Engines.Attendance.AttendanceRecord> AttendanceRecords => Set<HR.Domain.Engines.Attendance.AttendanceRecord>();
+
+    // Attendance & Shift engine
+    public DbSet<HR.Domain.Engines.Attendance.Shift> Shifts => Set<HR.Domain.Engines.Attendance.Shift>();
+    public DbSet<HR.Domain.Engines.Attendance.ShiftAssignment> ShiftAssignments => Set<HR.Domain.Engines.Attendance.ShiftAssignment>();
+    public DbSet<HR.Domain.Engines.Attendance.AttendancePunch> AttendancePunches => Set<HR.Domain.Engines.Attendance.AttendancePunch>();
+    public DbSet<HR.Domain.Engines.Attendance.AttendanceCorrection> AttendanceCorrections => Set<HR.Domain.Engines.Attendance.AttendanceCorrection>();
+    public DbSet<HR.Domain.Engines.Attendance.AttendancePolicy> AttendancePolicies => Set<HR.Domain.Engines.Attendance.AttendancePolicy>();
+    public DbSet<HR.Domain.Engines.Attendance.AttendanceHoliday> AttendanceHolidays => Set<HR.Domain.Engines.Attendance.AttendanceHoliday>();
+    public DbSet<HR.Domain.Engines.Attendance.AttendanceAuditLog> AttendanceAuditLogs => Set<HR.Domain.Engines.Attendance.AttendanceAuditLog>();
     public DbSet<HR.Domain.Engines.Notifications.Notification> Notifications => Set<HR.Domain.Engines.Notifications.Notification>();
     public DbSet<HR.Domain.Engines.Notifications.EmailNotificationQueue> EmailQueue => Set<HR.Domain.Engines.Notifications.EmailNotificationQueue>();
 
@@ -211,6 +227,13 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<HR.Domain.Engines.Expenses.Expense> Expenses => Set<HR.Domain.Engines.Expenses.Expense>();
     public DbSet<HR.Domain.Engines.Loans.Loan> Loans => Set<HR.Domain.Engines.Loans.Loan>();
     public DbSet<HR.Domain.Engines.Loans.LoanInstallment> LoanInstallments => Set<HR.Domain.Engines.Loans.LoanInstallment>();
+
+    // Employee personnel documents (ID/Iqama/passport/contract/… with optional expiry)
+    public DbSet<HR.Domain.Engines.Documents.EmployeeDocument> EmployeeDocuments => Set<HR.Domain.Engines.Documents.EmployeeDocument>();
+
+    // Notification rules (admin-configured) + dedup ledger for rule-driven notifications
+    public DbSet<HR.Domain.Engines.Notifications.NotificationRule> NotificationRules => Set<HR.Domain.Engines.Notifications.NotificationRule>();
+    public DbSet<HR.Domain.Engines.Notifications.NotificationDispatch> NotificationDispatches => Set<HR.Domain.Engines.Notifications.NotificationDispatch>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

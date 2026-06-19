@@ -77,6 +77,9 @@ builder.Services.AddDashboardsModule();
 builder.Services.AddNotificationsModule();
 builder.Services.AddPlatformModule();
 
+// Background: scan employee documents against notification rules and create expiry reminders.
+builder.Services.AddHostedService<HR.Api.Services.DocumentExpiryHostedService>();
+
 // Controllers
 builder.Services.AddControllers()
     .AddApplicationPart(typeof(HR.Modules.Identity.Controllers.AuthController).Assembly)
@@ -84,6 +87,7 @@ builder.Services.AddControllers()
     .AddApplicationPart(typeof(HR.Modules.Employees.Controllers.EmployeesController).Assembly)
     .AddApplicationPart(typeof(HR.Modules.Tasks.Controllers.TasksController).Assembly)
     .AddApplicationPart(typeof(HR.Modules.Settings.Controllers.SettingsController).Assembly)
+    .AddApplicationPart(typeof(HR.Modules.Attendance.Controllers.AttendanceController).Assembly)
     .AddApplicationPart(typeof(HR.Modules.Platform.Controllers.MetadataController).Assembly)
     .AddApplicationPart(typeof(HR.Modules.Workflows.Controllers.WorkflowDefinitionsController).Assembly);
 

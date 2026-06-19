@@ -24,6 +24,7 @@ public record UpdateEmployeeCommand : IRequest<EmployeeDto>
     public Guid? DepartmentId { get; init; }
     public Guid? BranchId { get; init; }
     public Guid? ManagerId { get; init; }
+    public string? PhotoUrl { get; init; }
 
     // Contact / emergency
     public string? Address { get; init; }

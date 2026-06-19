@@ -48,6 +48,7 @@ public class UpdateEmployeeCommandHandler : IRequestHandler<UpdateEmployeeComman
         employee.DepartmentId = request.DepartmentId;
         employee.BranchId = request.BranchId;
         employee.ManagerId = request.ManagerId;
+        employee.PhotoUrl = request.PhotoUrl;
         employee.Address = request.Address;
         employee.City = request.City;
         employee.EmergencyContactName = request.EmergencyContactName;

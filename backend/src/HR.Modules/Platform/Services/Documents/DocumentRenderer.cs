@@ -8,20 +8,36 @@ using QuestPDF.Infrastructure;
 
 namespace HR.Modules.Platform.Services.Documents;
 
-/// <summary>Renders an official PDF for an approved request using QuestPDF — works on Linux, no
-/// native deps. New templates use the JSON block model (<c>LayoutJson</c>) composed with a
-/// PageTemplate's chrome (header/footer/margins/watermark); legacy HTML bodies still render.</summary>
+/// <summary>A render job decoupled from any single entity: a template (optional), a title/ref, the
+/// resolved token dictionary, optional default detail rows (used when the template has no body), and
+/// an optional approval chain. Used for request PDFs and leave-record PDFs alike.</summary>
+public sealed record DocumentRenderRequest(
+    Guid? TemplateId,
+    string FallbackTitle,
+    string RefNumber,
+    IReadOnlyDictionary<string, string> Tokens,
+    IReadOnlyList<(string Label, string Value)>? DefaultDetails,
+    IReadOnlyList<(int Order, string Name, string Status)>? Approvals,
+    string FileName);
+
+/// <summary>Renders official PDFs using QuestPDF — works on Linux, no native deps. New templates use
+/// the JSON block model (<c>LayoutJson</c>) composed with a PageTemplate's chrome
+/// (header/footer/margins/watermark); legacy HTML bodies still render.</summary>
 public interface IDocumentRenderer
 {
     Task<(byte[] pdf, string fileName)> RenderRequestPdfAsync(Guid requestInstanceId, CancellationToken ct);
     Task<(byte[] pdf, string fileName)> RenderRequestPdfAsync(Guid requestInstanceId, Guid? templateId, CancellationToken ct);
+    Task<(byte[] pdf, string fileName)> RenderDocumentAsync(DocumentRenderRequest req, CancellationToken ct);
 }
 
 public sealed class DocumentRenderer : IDocumentRenderer
 {
     private readonly ApplicationDbContext _db;
     private readonly IDocumentTokenResolver _tokens;
-    private const string FontFamily = "Thmanyah Sans";
+    // Tajawal: a modern Arabic+Latin sans that renders reliably under Skia on Linux. The brand
+    // font (Thmanyah Sans) is OTF/CFF and Skia-on-Linux fails to render its Arabic glyphs (".notdef"
+    // boxes), so it can't be used for server-side PDF generation.
+    private const string FontFamily = "Tajawal";
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
 
     static DocumentRenderer()
@@ -31,13 +47,15 @@ public sealed class DocumentRenderer : IDocumentRenderer
         {
             var dir = Path.Combine(AppContext.BaseDirectory, "Fonts");
             if (Directory.Exists(dir))
-                foreach (var f in Directory.GetFiles(dir, "*.otf"))
+                foreach (var f in Directory.GetFiles(dir, "*.ttf"))
                     QuestPDF.Drawing.FontManager.RegisterFont(File.OpenRead(f));
         }
         catch { /* fall back to system fonts */ }
     }
 
     public DocumentRenderer(ApplicationDbContext db, IDocumentTokenResolver tokens) { _db = db; _tokens = tokens; }
+
+    // ── Request path (builds a render job from the request, then delegates) ──
 
     public Task<(byte[] pdf, string fileName)> RenderRequestPdfAsync(Guid requestInstanceId, CancellationToken ct)
         => RenderRequestPdfAsync(requestInstanceId, null, ct);
@@ -48,20 +66,38 @@ public sealed class DocumentRenderer : IDocumentRenderer
             .FirstOrDefaultAsync(r => r.Id == requestInstanceId, ct)
             ?? throw new HR.Application.Common.Exceptions.NotFoundException("RequestInstance", requestInstanceId);
 
-        var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == instance.EmployeeId, ct);
-        var company = await _db.CompanyProfiles.FirstOrDefaultAsync(ct);
         var approvals = await _db.RequestApprovals.Where(a => a.RequestInstanceId == requestInstanceId)
-            .OrderBy(a => a.StepOrder).ToListAsync(ct);
+            .OrderBy(a => a.StepOrder)
+            .Select(a => new { a.StepOrder, a.StepNameAr, Status = a.Status })
+            .ToListAsync(ct);
 
-        // Pick the template: explicit → request type's print template (legacy) → none.
+        var tokenValues = await _tokens.ResolveForRequestAsync(requestInstanceId, ct);
         var tplId = templateId ?? instance.RequestType.PrintTemplateId;
+
+        var req = new DocumentRenderRequest(
+            TemplateId: tplId,
+            FallbackTitle: instance.RequestType.NameAr,
+            RefNumber: instance.RequestNumber,
+            Tokens: tokenValues,
+            DefaultDetails: null, // → generic Employee/Leave detail table
+            Approvals: approvals.Select(a => (a.StepOrder, a.StepNameAr, StatusAr(a.Status.ToString()))).ToList(),
+            FileName: $"{instance.RequestType.Code}-{instance.RequestNumber}.pdf");
+
+        return await RenderDocumentAsync(req, ct);
+    }
+
+    // ── Generic core ──
+
+    public async Task<(byte[] pdf, string fileName)> RenderDocumentAsync(DocumentRenderRequest req, CancellationToken ct)
+    {
+        var company = await _db.CompanyProfiles.FirstOrDefaultAsync(ct);
+
         HR.Domain.Engines.Documents.DocumentTemplate? tpl = null;
-        if (tplId is { } id)
+        if (req.TemplateId is { } id)
             tpl = await _db.DocumentTemplates.FirstOrDefaultAsync(t => t.Id == id, ct);
 
-        var title = tpl?.NameAr ?? instance.RequestType.NameAr;
+        var title = tpl?.NameAr ?? req.FallbackTitle;
 
-        // Page template (chrome). Null → built-in defaults.
         HR.Domain.Engines.Documents.PageTemplate? page = null;
         if (tpl?.PageTemplateId is { } pid)
             page = await _db.PageTemplates.FirstOrDefaultAsync(p => p.Id == pid, ct);
@@ -78,12 +114,11 @@ public sealed class DocumentRenderer : IDocumentRenderer
         var contact = ParseJson(company?.ContactInfo);
         var address = ParseJson(company?.NationalAddress);
 
-        var tokenValues = await _tokens.ResolveForRequestAsync(requestInstanceId, ct);
+        var tokenValues = req.Tokens;
         var employeeName = tokenValues.GetValueOrDefault("Employee.FullName", "—");
         var generatedDate = DateTime.UtcNow.ToString("yyyy-MM-dd");
-        var qr = MakeQr($"{company?.NameAr} | {instance.RequestNumber} | {employeeName} | {generatedDate}");
+        var qr = MakeQr($"{company?.NameAr} | {req.RefNumber} | {employeeName} | {generatedDate}");
 
-        // Body source: block model → legacy HTML → structured details.
         List<Block>? blocks = null;
         if (!string.IsNullOrWhiteSpace(tpl?.LayoutJson))
         {
@@ -93,24 +128,18 @@ public sealed class DocumentRenderer : IDocumentRenderer
         var legacyHtml = blocks is null && !string.IsNullOrWhiteSpace(tpl?.BodyTemplate)
             ? ParseHtmlBlocks(ResolveTokens(tpl!.BodyTemplate!, tokenValues)) : null;
 
-        // Pre-load any image blocks (QuestPDF rendering below is synchronous — no DB inside).
         var blockImages = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
         if (blocks is not null)
             foreach (var b in blocks.Where(b => string.Equals(b.Type, "image", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(b.FileId)))
                 if (!blockImages.ContainsKey(b.FileId!) && await LoadImageAsync(b.FileId, ct) is { } bytes)
                     blockImages[b.FileId!] = bytes;
 
-        var details = new List<(string, string)>
-        {
-            ("اسم الموظف", tokenValues.GetValueOrDefault("Employee.FullName", "—")),
-            ("الرقم الوظيفي", tokenValues.GetValueOrDefault("Employee.EmployeeNumber", "—")),
-            ("الإدارة", tokenValues.GetValueOrDefault("Employee.Department", "—")),
-            ("المسمى الوظيفي", tokenValues.GetValueOrDefault("Employee.JobTitle", "—")),
-        };
-        if (!string.IsNullOrEmpty(tokenValues.GetValueOrDefault("Leave.Type"))) details.Add(("نوع الإجازة", tokenValues["Leave.Type"]));
-        if (!string.IsNullOrEmpty(tokenValues.GetValueOrDefault("Leave.StartDate"))) details.Add(("من", tokenValues["Leave.StartDate"]));
-        if (!string.IsNullOrEmpty(tokenValues.GetValueOrDefault("Leave.EndDate"))) details.Add(("إلى", tokenValues["Leave.EndDate"]));
-        if (!string.IsNullOrEmpty(tokenValues.GetValueOrDefault("Leave.Days"))) details.Add(("عدد الأيام", tokenValues["Leave.Days"]));
+        // Default detail table: caller-supplied rows, else the generic Employee/Leave fields.
+        var details = req.DefaultDetails?.Select(d => (d.Label, d.Value)).ToList()
+            ?? BuildGenericDetails(tokenValues);
+
+        var approvals = req.Approvals ?? Array.Empty<(int, string, string)>();
+        var refNumber = req.RefNumber;
 
         byte[] BuildPdf(bool useBody) => Document.Create(doc =>
         {
@@ -123,12 +152,10 @@ public sealed class DocumentRenderer : IDocumentRenderer
                 p.MarginRight(GetNum(margins, "right", 36));
                 p.DefaultTextStyle(x => x.FontFamily(FontFamily).FontSize(11).DirectionFromRightToLeft());
 
-                // Watermark
                 var wmText = GetStr(watermark, "text");
                 if (!string.IsNullOrWhiteSpace(wmText))
                     p.Background().AlignCenter().AlignMiddle().Text(wmText!).FontSize(60).FontColor(Colors.Grey.Lighten3);
 
-                // ── Header (page-template chrome) ──
                 if (GetBool(header, "showLogo", true) || GetBool(header, "showIdentity", true) || !string.IsNullOrWhiteSpace(GetStr(header, "customText")))
                 {
                     p.Header().Column(col =>
@@ -177,7 +204,6 @@ public sealed class DocumentRenderer : IDocumentRenderer
                     });
                 }
 
-                // ── Content ──
                 p.Content().PaddingVertical(16).Column(col =>
                 {
                     col.Spacing(12);
@@ -189,7 +215,8 @@ public sealed class DocumentRenderer : IDocumentRenderer
                         RenderLegacy(col, legacyHtml);
                     else
                     {
-                        col.Item().Text($"رقم الطلب: {instance.RequestNumber}").FontSize(10).FontColor(Colors.Grey.Medium);
+                        if (!string.IsNullOrWhiteSpace(refNumber))
+                            col.Item().Text($"المرجع: {refNumber}").FontSize(10).FontColor(Colors.Grey.Medium);
                         col.Item().Table(table =>
                         {
                             table.ColumnsDefinition(c => { c.RelativeColumn(1); c.RelativeColumn(2); });
@@ -206,13 +233,12 @@ public sealed class DocumentRenderer : IDocumentRenderer
                         col.Item().PaddingTop(6).Text("سلسلة الموافقات").Bold();
                         col.Item().Column(ac =>
                         {
-                            foreach (var a in approvals)
-                                ac.Item().Text($"{a.StepOrder}. {a.StepNameAr} — {StatusAr(a.Status.ToString())}").FontSize(10);
+                            foreach (var (order, name, status) in approvals)
+                                ac.Item().Text($"{order}. {name} — {status}").FontSize(10);
                         });
                     }
                 });
 
-                // ── Footer (page-template chrome) ──
                 p.Footer().Column(col =>
                 {
                     col.Item().PaddingTop(6).LineHorizontal(1).LineColor(Colors.Grey.Lighten1);
@@ -238,8 +264,23 @@ public sealed class DocumentRenderer : IDocumentRenderer
             pdf = BuildPdf(false);
         }
 
-        var fileName = $"{instance.RequestType.Code}-{instance.RequestNumber}.pdf";
-        return (pdf, fileName);
+        return (pdf, req.FileName);
+    }
+
+    private static List<(string, string)> BuildGenericDetails(IReadOnlyDictionary<string, string> t)
+    {
+        var details = new List<(string, string)>
+        {
+            ("اسم الموظف", t.GetValueOrDefault("Employee.FullName", "—")),
+            ("الرقم الوظيفي", t.GetValueOrDefault("Employee.EmployeeNumber", "—")),
+            ("الإدارة", t.GetValueOrDefault("Employee.Department", "—")),
+            ("المسمى الوظيفي", t.GetValueOrDefault("Employee.JobTitle", "—")),
+        };
+        if (!string.IsNullOrEmpty(t.GetValueOrDefault("Leave.Type"))) details.Add(("نوع الإجازة", t["Leave.Type"]));
+        if (!string.IsNullOrEmpty(t.GetValueOrDefault("Leave.StartDate"))) details.Add(("من", t["Leave.StartDate"]));
+        if (!string.IsNullOrEmpty(t.GetValueOrDefault("Leave.EndDate"))) details.Add(("إلى", t["Leave.EndDate"]));
+        if (!string.IsNullOrEmpty(t.GetValueOrDefault("Leave.Days"))) details.Add(("عدد الأيام", t["Leave.Days"]));
+        return details;
     }
 
     // ── Block model rendering ──

@@ -30,7 +30,8 @@ public enum RequestPermissionAction
     View = 3,
 }
 
-/// <summary>Attendance day state — written when leave/attendance-correction requests are approved.</summary>
+/// <summary>Attendance day state. Resolved by the Attendance engine (live punches + shift rules)
+/// and by approved leave / missing-punch / correction requests.</summary>
 public enum AttendanceStatus
 {
     Present = 1,
@@ -39,5 +40,17 @@ public enum AttendanceStatus
     Holiday = 4,
     Weekend = 5,
     Late = 6,
-    Remote = 7,
+    Remote = 7,            // legacy alias of WorkFromHome (kept for existing rows)
+    MissingCheckIn = 8,
+    MissingCheckOut = 9,
+    ShortHours = 10,
+    Overtime = 11,
+    WorkFromHome = 12,
+}
+
+/// <summary>Direction of a single attendance punch.</summary>
+public enum PunchDirection
+{
+    In = 1,
+    Out = 2,
 }

@@ -45,9 +45,11 @@ public static class DependencyInjection
         services.AddScoped<HR.Modules.Platform.Services.Dashboards.IDashboardSeeder,
             HR.Modules.Platform.Services.Dashboards.DashboardSeeder>();
 
-        // Notification engine (bell + email queue)
+        // Notification engine (bell + email queue) + document-expiry rule scanner
         services.AddScoped<HR.Modules.Platform.Services.Notifications.INotificationService,
             HR.Modules.Platform.Services.Notifications.NotificationService>();
+        services.AddScoped<HR.Modules.Platform.Services.Notifications.IDocumentExpiryScanner,
+            HR.Modules.Platform.Services.Notifications.DocumentExpiryScanner>();
 
         // Request Center engine + system-request seeder
         services.AddScoped<HR.Modules.Platform.Services.Requests.ILeaveService,
@@ -56,6 +58,10 @@ public static class DependencyInjection
             HR.Modules.Platform.Services.Requests.RequestEngine>();
         services.AddScoped<HR.Modules.Platform.Services.Requests.IRequestSeeder,
             HR.Modules.Platform.Services.Requests.RequestSeeder>();
+
+        // HR-managed leave records engine
+        services.AddScoped<HR.Modules.Platform.Services.Leaves.ILeaveRecordService,
+            HR.Modules.Platform.Services.Leaves.LeaveRecordService>();
 
         // Official document rendering (QuestPDF) + token resolution + mapping-driven generation
         services.AddScoped<HR.Modules.Platform.Services.Documents.IDocumentTokenResolver,

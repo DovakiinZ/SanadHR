@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Plus, Pencil, Trash2, Search, Loader2, Lock } from "lucide-react";
 import { toast } from "sonner";
@@ -15,6 +15,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { ApiError } from "@/lib/api-client";
+import { transliterateArabic } from "@/lib/transliterate";
 import {
   MasterDataItem, getMasterDataItems, createMasterDataItem, updateMasterDataItem, deleteMasterDataItem,
 } from "@/lib/api/master-data";
@@ -74,12 +75,17 @@ export function SimpleMasterDataList({ objectType, title, description, backHref 
     return items.filter((i) => i.nameAr.includes(search) || i.nameEn.toLowerCase().includes(s) || i.code.toLowerCase().includes(s));
   }, [items, search]);
 
-  function openCreate() { setEditing(null); setForm(emptyForm); setDialogOpen(true); }
+  // Auto-fill the English name from Arabic (transliteration) until the user edits it.
+  const enTouched = useRef(false);
+  function openCreate() { enTouched.current = false; setEditing(null); setForm(emptyForm); setDialogOpen(true); }
   function openEdit(i: MasterDataItem) {
+    enTouched.current = !!i.nameEn;
     setEditing(i);
     setForm({ code: i.code, nameAr: i.nameAr, nameEn: i.nameEn, description: i.description ?? "", isActive: i.isActive });
     setDialogOpen(true);
   }
+  const onNameAr = (v: string) => setForm((f) => ({ ...f, nameAr: v, ...(enTouched.current ? {} : { nameEn: transliterateArabic(v) }) }));
+  const onNameEn = (v: string) => { enTouched.current = true; setForm((f) => ({ ...f, nameEn: v })); };
 
   async function save() {
     if (!form.nameAr.trim() || !form.nameEn.trim()) { toast.error("الاسم بالعربية والإنجليزية مطلوبان"); return; }
@@ -193,11 +199,11 @@ export function SimpleMasterDataList({ objectType, title, description, backHref 
             </div>
             <div className="space-y-2">
               <Label className="text-xs font-bold uppercase tracking-wider">الاسم (عربي)</Label>
-              <Input value={form.nameAr} onChange={(e) => setForm({ ...form, nameAr: e.target.value })} className="bg-secondary border-border" />
+              <Input value={form.nameAr} onChange={(e) => onNameAr(e.target.value)} className="bg-secondary border-border" />
             </div>
             <div className="space-y-2">
               <Label className="text-xs font-bold uppercase tracking-wider">الاسم (إنجليزي)</Label>
-              <Input value={form.nameEn} onChange={(e) => setForm({ ...form, nameEn: e.target.value })} className="bg-secondary border-border" />
+              <Input value={form.nameEn} onChange={(e) => onNameEn(e.target.value)} className="bg-secondary border-border" />
             </div>
             <div className="space-y-2 sm:col-span-2">
               <Label className="text-xs font-bold uppercase tracking-wider">الوصف</Label>
