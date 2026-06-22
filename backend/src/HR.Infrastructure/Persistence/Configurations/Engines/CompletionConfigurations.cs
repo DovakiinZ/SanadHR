@@ -1,0 +1,43 @@
+using HR.Domain.Engines.Completion;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
+namespace HR.Infrastructure.Persistence.Configurations.Engines;
+
+public class CompletionRunConfiguration : IEntityTypeConfiguration<CompletionRun>
+{
+    public void Configure(EntityTypeBuilder<CompletionRun> builder)
+    {
+        builder.ToTable("engine_completion_runs");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.FailureReason).HasMaxLength(2000);
+        builder.HasIndex(x => x.RequestInstanceId).IsUnique();
+        builder.HasIndex(x => x.TenantId);
+        builder.HasIndex(x => x.Status);
+
+        builder.HasMany(x => x.Effects)
+            .WithOne(e => e.Run)
+            .HasForeignKey(e => e.CompletionRunId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class CompletionEffectConfiguration : IEntityTypeConfiguration<CompletionEffect>
+{
+    public void Configure(EntityTypeBuilder<CompletionEffect> builder)
+    {
+        builder.ToTable("engine_completion_effects");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.EffectType).HasMaxLength(200).IsRequired();
+        builder.Property(x => x.Payload).HasColumnType("jsonb");
+        builder.Property(x => x.ResultSummary).HasColumnType("jsonb");
+        builder.Property(x => x.ExecutorName).HasMaxLength(200);
+        builder.Property(x => x.ExecutorVersion).HasMaxLength(50);
+        builder.Property(x => x.TargetEntityType).HasMaxLength(200);
+        builder.Property(x => x.FailureReason).HasMaxLength(2000);
+        builder.HasIndex(x => x.RequestInstanceId);
+        builder.HasIndex(x => x.CompletionRunId);
+        builder.HasIndex(x => x.TenantId);
+        builder.HasIndex(x => x.Status);
+    }
+}

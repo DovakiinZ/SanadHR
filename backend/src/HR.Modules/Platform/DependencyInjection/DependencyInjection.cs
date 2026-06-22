@@ -1,5 +1,6 @@
 using System.Reflection;
 using HR.Application.Engines.Audit;
+using HR.Application.Engines.Completion;
 using HR.Application.Engines.Automation;
 using HR.Application.Engines.Permissions;
 using HR.Application.Engines.Timeline;
@@ -50,6 +51,14 @@ public static class DependencyInjection
             HR.Modules.Platform.Services.Notifications.NotificationService>();
         services.AddScoped<HR.Modules.Platform.Services.Notifications.IDocumentExpiryScanner,
             HR.Modules.Platform.Services.Notifications.DocumentExpiryScanner>();
+
+        // Completion Effects Engine — generic orchestrator + flags→intents factory + executor
+        // registry. Executors are auto-discovered from this assembly (Leave/Expense/Loan executors
+        // also live here today); other modules register their own.
+        services.AddScoped<IEffectExecutorRegistry, EffectExecutorRegistry>();
+        services.AddScoped<ICompletionEngine, HR.Modules.Platform.Services.Completion.CompletionEngine>();
+        services.AddScoped<ICompletionEffectFactory, HR.Modules.Platform.Services.Completion.CompletionEffectFactory>();
+        services.AddEffectExecutorsFromAssembly(Assembly.GetExecutingAssembly());
 
         // Request Center engine + system-request seeder
         services.AddScoped<HR.Modules.Platform.Services.Requests.ILeaveService,

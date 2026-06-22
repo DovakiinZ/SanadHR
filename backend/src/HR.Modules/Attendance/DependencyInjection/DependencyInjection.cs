@@ -1,3 +1,5 @@
+using System.Reflection;
+using HR.Application.Engines.Completion;
 using HR.Modules.Attendance.Services;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -10,6 +12,8 @@ public static class DependencyInjection
         services.AddScoped<IAttendanceCalculationService, AttendanceCalculationService>();
         services.AddScoped<IShiftResolver, ShiftResolver>();
         services.AddScoped<IAttendanceService, AttendanceService>();
+        // Completion effects this module owns (ApplyLeaveDays, CreatePunch, Correct).
+        services.AddEffectExecutorsFromAssembly(Assembly.GetExecutingAssembly());
         return services;
     }
 }

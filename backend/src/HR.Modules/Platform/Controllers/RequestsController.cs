@@ -337,6 +337,47 @@ public class RequestsController : BaseApiController
         return dto is null ? NotFound(ApiResponse.Fail("Request not found")) : OkResponse(dto);
     }
 
+    /// <summary>
+    /// Completion status for a request: the overall run plus each effect that ran (type, status,
+    /// duration, target record, failure reason). Populated by the Completion Effects Engine after
+    /// final approval. Returns null run if the request has not completed yet.
+    /// </summary>
+    [HttpGet("{id:guid}/completion")]
+    public async Task<ActionResult<ApiResponse<CompletionRunDto?>>> Completion(Guid id, CancellationToken ct)
+    {
+        var run = await _db.CompletionRuns.Where(r => r.RequestInstanceId == id)
+            .Select(r => new CompletionRunDto
+            {
+                Id = r.Id,
+                RequestInstanceId = r.RequestInstanceId,
+                Status = r.Status.ToString(),
+                StartedAt = r.StartedAt,
+                CompletedAt = r.CompletedAt,
+                DurationMs = r.DurationMs,
+                Attempts = r.Attempts,
+                FailureReason = r.FailureReason,
+            }).FirstOrDefaultAsync(ct);
+
+        if (run is not null)
+            run.Effects = await _db.CompletionEffects.Where(e => e.CompletionRunId == run.Id).OrderBy(e => e.Sequence)
+                .Select(e => new CompletionEffectDto
+                {
+                    EffectType = e.EffectType,
+                    Sequence = e.Sequence,
+                    Status = e.Status.ToString(),
+                    DurationMs = e.DurationMs,
+                    ExecutorName = e.ExecutorName,
+                    ExecutorVersion = e.ExecutorVersion,
+                    TargetEntityType = e.TargetEntityType,
+                    TargetRecordId = e.TargetRecordId,
+                    ResultSummary = e.ResultSummary,
+                    FailureReason = e.FailureReason,
+                    ExecutedAt = e.ExecutedAt,
+                }).ToListAsync(ct);
+
+        return OkResponse(run);
+    }
+
     /// <summary>Download the official PDF for a request (logo, CR/VAT, details, approvals, QR).</summary>
     [HttpGet("{id:guid}/document")]
     public async Task<IActionResult> Document(Guid id, CancellationToken ct)
@@ -432,6 +473,34 @@ public sealed class SubmitRequestBody
 public sealed class DecisionBody { public string? Comment { get; set; } }
 public sealed class SetPrintTemplateBody { public Guid? TemplateId { get; set; } }
 public sealed class AddTemplateMappingBody { public Guid TemplateId { get; set; } public string TriggerEvent { get; set; } = "FinalApproval"; }
+
+public sealed class CompletionRunDto
+{
+    public Guid Id { get; set; }
+    public Guid RequestInstanceId { get; set; }
+    public string Status { get; set; } = null!;
+    public DateTime StartedAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
+    public int? DurationMs { get; set; }
+    public int Attempts { get; set; }
+    public string? FailureReason { get; set; }
+    public List<CompletionEffectDto> Effects { get; set; } = new();
+}
+
+public sealed class CompletionEffectDto
+{
+    public string EffectType { get; set; } = null!;
+    public int Sequence { get; set; }
+    public string Status { get; set; } = null!;
+    public int? DurationMs { get; set; }
+    public string? ExecutorName { get; set; }
+    public string? ExecutorVersion { get; set; }
+    public string? TargetEntityType { get; set; }
+    public Guid? TargetRecordId { get; set; }
+    public string? ResultSummary { get; set; }
+    public string? FailureReason { get; set; }
+    public DateTime? ExecutedAt { get; set; }
+}
 
 public sealed class RequestTemplateMappingDto
 {
