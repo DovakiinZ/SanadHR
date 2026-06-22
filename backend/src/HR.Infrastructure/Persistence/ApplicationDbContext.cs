@@ -129,6 +129,10 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<TimelineEvent> TimelineEvents => Set<TimelineEvent>();
     public DbSet<TimelineSubscription> TimelineSubscriptions => Set<TimelineSubscription>();
 
+    // Completion Effects Engine
+    public DbSet<HR.Domain.Engines.Completion.CompletionRun> CompletionRuns => Set<HR.Domain.Engines.Completion.CompletionRun>();
+    public DbSet<HR.Domain.Engines.Completion.CompletionEffect> CompletionEffects => Set<HR.Domain.Engines.Completion.CompletionEffect>();
+
     // Token Engine
     public DbSet<TokenDefinition> TokenDefinitions => Set<TokenDefinition>();
     public DbSet<TokenCategory> TokenCategories => Set<TokenCategory>();

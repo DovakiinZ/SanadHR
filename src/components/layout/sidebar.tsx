@@ -61,9 +61,9 @@ export function Sidebar() {
   return (
     <aside className="fixed top-0 right-0 z-40 h-screen w-16 border-l border-border bg-secondary flex flex-col items-center py-4">
       {/* Logo */}
-      <div className="mb-6 flex h-10 w-10 items-center justify-center bg-primary">
-        <span className="text-lg font-bold text-primary-foreground">HR</span>
-      </div>
+      <Link href="/dashboard" className="mb-6 flex h-10 w-10 items-center justify-center" aria-label="سند">
+        <span className="font-serif-display text-2xl font-black leading-none text-primary">سند</span>
+      </Link>
 
       {/* Nav */}
       <nav className="flex flex-1 flex-col items-center gap-1">

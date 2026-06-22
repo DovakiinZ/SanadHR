@@ -1,0 +1,22 @@
+namespace HR.Domain.Enums;
+
+/// <summary>Overall completion status of a request, tracked separately from its workflow status.</summary>
+public enum CompletionRunStatus
+{
+    Pending = 1,
+    Executing = 2,
+    Completed = 3,
+    Failed = 4,
+    Cancelled = 5,
+}
+
+/// <summary>Execution status of a single completion effect within a run.</summary>
+public enum CompletionEffectStatus
+{
+    Pending = 1,
+    Executing = 2,
+    Completed = 3,
+    Failed = 4,
+    Cancelled = 5,
+    Skipped = 6,
+}

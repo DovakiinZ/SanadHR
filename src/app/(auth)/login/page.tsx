@@ -46,11 +46,8 @@ export default function LoginPage() {
     <div className="border border-border bg-card p-8">
       {/* Logo */}
       <div className="mb-8 text-center">
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center bg-primary">
-          <span className="text-xl font-bold text-primary-foreground">HR</span>
-        </div>
-        <h1 className="text-xl font-bold">HR Cloud</h1>
-        <p className="text-sm text-muted-foreground mt-1">نظام إدارة الموارد البشرية</p>
+        <span className="font-serif-display text-5xl font-black leading-none text-primary">سند</span>
+        <p className="text-sm text-muted-foreground mt-2">نظام إدارة الموارد البشرية</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">

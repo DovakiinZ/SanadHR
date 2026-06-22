@@ -3,10 +3,9 @@ using FluentValidation.Results;
 using HR.Application.Common.Exceptions;
 using HR.Application.Common.Interfaces;
 using HR.Application.Engines.Audit;
+using HR.Application.Engines.Completion;
 using HR.Application.Engines.Timeline;
-using HR.Domain.Engines.Attendance;
 using HR.Domain.Engines.Forms;
-using HR.Domain.Engines.Leave;
 using HR.Domain.Engines.Notifications;
 using HR.Domain.Engines.Requests;
 using HR.Domain.Engines.Workflows;
@@ -23,6 +22,7 @@ public sealed class RequestEngine : IRequestEngine
     private readonly ITimelineEngine _timeline;
     private readonly IAuditEngine _audit;
     private readonly ILeaveService _leave;
+    private readonly ICompletionEngine _completion;
     private readonly HR.Modules.Platform.Services.Notifications.INotificationService _notify;
     private readonly HR.Modules.Platform.Services.Documents.IDocumentGenerationService _docGen;
 
@@ -30,10 +30,11 @@ public sealed class RequestEngine : IRequestEngine
     private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
 
     public RequestEngine(ApplicationDbContext db, ICurrentUserService user, ITimelineEngine timeline, IAuditEngine audit, ILeaveService leave,
+        ICompletionEngine completion,
         HR.Modules.Platform.Services.Notifications.INotificationService notify,
         HR.Modules.Platform.Services.Documents.IDocumentGenerationService docGen)
     {
-        _db = db; _user = user; _timeline = timeline; _audit = audit; _leave = leave; _notify = notify; _docGen = docGen;
+        _db = db; _user = user; _timeline = timeline; _audit = audit; _leave = leave; _completion = completion; _notify = notify; _docGen = docGen;
     }
 
     // ── Submit ────────────────────────────────────────────────────────────────
@@ -150,7 +151,10 @@ public sealed class RequestEngine : IRequestEngine
         }
         else
         {
-            await ApplyImpactsAsync(instance, type, employee, ct);
+            // No approval chain → the request is final on submit: run completion immediately.
+            var completion = await _completion.ExecuteAsync(instance.Id, ct);
+            instance.Status = completion.Success ? RequestStatus.Approved : RequestStatus.CompletionFailed;
+            instance.DecidedAt = DateTime.UtcNow;
         }
 
         // Trigger: Submitted (always). If there is no approval chain the request is final on submit.
@@ -223,15 +227,24 @@ public sealed class RequestEngine : IRequestEngine
             return instance;
         }
 
-        // Final approval → apply impacts
+        // Final approval → hand off to the Completion Effects Engine. The engine resolves the
+        // request's effects, runs them in ONE transaction, and tracks/audits each. The Request
+        // engine no longer touches any business module directly.
         await TransitionAsync(instance, RequestStatus.Approved, comment, "تمت الموافقة على الطلب", "Request approved", ct);
         await CloseWorkflowAsync(instance, WorkflowStatus.Completed, ct);
-        var employee = await _db.Employees.FirstAsync(e => e.Id == instance.EmployeeId, ct);
-        await ApplyImpactsAsync(instance, instance.RequestType, employee, ct);
-        await NotifySubmitterAsync(instance, "تمت الموافقة على طلبك", "Your request was approved", ct);
-        // Triggers: FinalApproval + Completed (last approver approved → request is final).
-        await _docGen.GenerateForTriggerAsync(instance.Id, DocumentTriggerEvent.FinalApproval, ct);
-        await _docGen.GenerateForTriggerAsync(instance.Id, DocumentTriggerEvent.Completed, ct);
+        var completion = await _completion.ExecuteAsync(instance.Id, ct);
+        if (completion.Success)
+        {
+            await NotifySubmitterAsync(instance, "تمت الموافقة على طلبك", "Your request was approved", ct);
+            // Triggers: FinalApproval + Completed (last approver approved → request is final).
+            await _docGen.GenerateForTriggerAsync(instance.Id, DocumentTriggerEvent.FinalApproval, ct);
+            await _docGen.GenerateForTriggerAsync(instance.Id, DocumentTriggerEvent.Completed, ct);
+        }
+        else
+        {
+            // Workflow is approved but the effects were rolled back — flag for support (already notified).
+            instance.Status = RequestStatus.CompletionFailed;
+        }
         await _db.SaveChangesAsync(ct);
         return instance;
     }
@@ -270,181 +283,13 @@ public sealed class RequestEngine : IRequestEngine
         var employee = await _db.Employees.FirstOrDefaultAsync(e => e.UserId == _user.UserId, ct);
         if (employee is null || instance.EmployeeId != employee.Id)
             throw new ForbiddenException("You can only cancel your own requests.");
-        if (instance.Status is RequestStatus.Approved or RequestStatus.Rejected or RequestStatus.Cancelled)
+        if (instance.Status is RequestStatus.Approved or RequestStatus.Rejected or RequestStatus.Cancelled or RequestStatus.CompletionFailed)
             throw Invalid("status", "This request can no longer be cancelled.");
 
         await TransitionAsync(instance, RequestStatus.Cancelled, null, "تم إلغاء الطلب", "Request cancelled", ct);
         await CloseWorkflowAsync(instance, WorkflowStatus.Cancelled, ct);
         await _db.SaveChangesAsync(ct);
         return instance;
-    }
-
-    // ── Impact engine (deterministic, driven by RequestImpactMapping) ───────────
-
-    private async Task ApplyImpactsAsync(RequestInstance instance, RequestType type, HR.Modules.Employees.Entities.Employee employee, CancellationToken ct)
-    {
-        var impact = type.ImpactMapping;
-        if (impact is null) return;
-
-        // Load the selected leave type's rules (object-driven; never hardcoded).
-        LeaveRules? rules = null;
-        if (instance.LeaveTypeId is { } ltId)
-        {
-            var leaveItem = await _db.MasterDataItems.FirstOrDefaultAsync(m => m.Id == ltId, ct);
-            rules = _leave.GetRules(leaveItem?.MetadataJson);
-        }
-
-        // Leave: deduct balance (paid only), create the canonical LeaveRecord + balance ledger entry,
-        // and mark attendance. The LeaveRecord powers the HR Leaves page (balance before/after, print…).
-        if (instance.LeaveTypeId is { } leaveTypeId && instance.StartDate is { } lstart && instance.EndDate is { } lend)
-        {
-            var days = instance.DaysCount ?? 0m;
-            var year = lstart.Year;
-            var affectsBalance = impact.AffectsLeaveBalance && days > 0 && (rules?.Paid ?? true);
-
-            var bal = await _db.LeaveBalances.FirstOrDefaultAsync(
-                b => b.EmployeeId == employee.Id && b.LeaveTypeId == leaveTypeId && b.Year == year, ct);
-            var entitled = bal?.EntitledDays ?? (decimal)(rules?.AnnualBalance ?? 30);
-            var balanceBefore = (bal?.EntitledDays ?? entitled) + (bal?.CarriedForwardDays ?? 0m) - (bal?.UsedDays ?? 0m);
-            var balanceAfter = balanceBefore;
-
-            if (affectsBalance)
-            {
-                if (bal is null)
-                {
-                    bal = new LeaveBalance { EmployeeId = employee.Id, LeaveTypeId = leaveTypeId, Year = year, EntitledDays = entitled, UsedDays = 0m };
-                    _db.LeaveBalances.Add(bal);
-                }
-                bal.UsedDays += days;
-                balanceAfter = bal.EntitledDays + bal.CarriedForwardDays - bal.UsedDays;
-            }
-
-            var record = new LeaveRecord
-            {
-                RecordNumber = await NextLeaveNumberAsync(ct),
-                EmployeeId = employee.Id,
-                LeaveTypeId = leaveTypeId,
-                StartDate = lstart,
-                EndDate = lend,
-                DaysCount = days,
-                AffectsBalance = affectsBalance,
-                BalanceBefore = balanceBefore,
-                BalanceAfter = balanceAfter,
-                Status = LeaveRecordStatus.Approved,
-                Source = LeaveRecordSource.Request,
-                RequestInstanceId = instance.Id,
-                ApprovedByUserId = _user.UserId,
-                ApprovedAt = DateTime.UtcNow,
-                Notes = instance.DecisionNote,
-            };
-            _db.LeaveRecords.Add(record);
-
-            if (affectsBalance)
-                _db.LeaveBalanceTransactions.Add(new LeaveBalanceTransaction
-                {
-                    EmployeeId = employee.Id, LeaveTypeId = leaveTypeId, Year = year, LeaveRecordId = record.Id,
-                    Delta = -days, BalanceAfter = balanceAfter, Reason = "Leave request approved",
-                    ActorUserId = _user.UserId, At = DateTime.UtcNow,
-                });
-
-            _db.LeaveAuditLogs.Add(new LeaveAuditLog
-            {
-                LeaveRecordId = record.Id, EmployeeId = employee.Id, Action = "Created",
-                DetailsAr = $"إنشاء سجل إجازة من الطلب {instance.RequestNumber}",
-                DetailsEn = $"Leave record created from request {instance.RequestNumber}",
-                ActorUserId = _user.UserId, At = DateTime.UtcNow,
-            });
-
-            var marksAttendance = impact.AffectsAttendance && (rules?.AffectsAttendance ?? true);
-            if (marksAttendance && lend >= lstart)
-                for (var d = lstart.Date; d <= lend.Date; d = d.AddDays(1))
-                    _db.AttendanceRecords.Add(new AttendanceRecord
-                    {
-                        EmployeeId = employee.Id,
-                        Date = DateTime.SpecifyKind(d, DateTimeKind.Utc),
-                        Status = AttendanceStatus.OnLeave,
-                        Source = "LeaveRequest",
-                        ReferenceId = instance.Id,
-                    });
-        }
-
-        // Non-leave targets (expense / loan / attendance punch / correction) read submitted form values.
-        if (impact.CreatesExpenseRecord || impact.CreatesLoanRecord || impact.CreatesAttendancePunch
-            || (impact.AffectsAttendance && instance.LeaveTypeId is null))
-        {
-            var fv = await LoadFormValuesAsync(instance.FormSubmissionId, ct);
-            string? V(string code) => fv.TryGetValue(code, out var x) ? x.Value : null;
-            string? Fl(string code) => fv.TryGetValue(code, out var x) ? x.FileUrl : null;
-            decimal Dec(string code) => decimal.TryParse(V(code), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : 0m;
-            int Int(string code) => int.TryParse(V(code), out var n) ? n : 0;
-
-            // Expense Claim → Expense record (feeds the Expenses page).
-            if (impact.CreatesExpenseRecord)
-                _db.Expenses.Add(new HR.Domain.Engines.Expenses.Expense
-                {
-                    EmployeeId = employee.Id,
-                    ExpenseCategoryId = ParseGuid(V("expenseCategory")),
-                    Amount = Dec("amount"),
-                    Currency = employee.Currency ?? "SAR",
-                    Description = V("description") ?? V("reason"),
-                    ReceiptUrl = Fl("receipt"),
-                    Status = "Approved",
-                    RequestInstanceId = instance.Id,
-                    DecidedAt = DateTime.UtcNow,
-                });
-
-            // Loan / Salary Advance → Loan + monthly installment schedule (payroll deductions).
-            if (impact.CreatesLoanRecord)
-            {
-                var principal = Dec("amount");
-                var months = Math.Max(1, type.Code == "SALARY_ADVANCE" ? 1 : Int("installmentMonths"));
-                var monthly = Math.Round(principal / months, 2);
-                var loan = new HR.Domain.Engines.Loans.Loan
-                {
-                    EmployeeId = employee.Id,
-                    LoanTypeId = ParseGuid(V("loanType")),
-                    Kind = type.Code == "SALARY_ADVANCE" ? "Advance" : "Loan",
-                    Principal = principal, InstallmentMonths = months, MonthlyInstallment = monthly,
-                    Status = "Active", RequestInstanceId = instance.Id, StartDate = DateTime.UtcNow,
-                };
-                var firstMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1);
-                for (int i = 0; i < months; i++)
-                    loan.Installments.Add(new HR.Domain.Engines.Loans.LoanInstallment { DueMonth = firstMonth.AddMonths(i), Amount = monthly, Paid = false });
-                _db.Loans.Add(loan);
-            }
-
-            // Missing Punch → create an attendance record with punch in/out for the date.
-            if (impact.CreatesAttendancePunch)
-            {
-                var date = ParseDate(V("startDate")) ?? ParseDate(V("date")) ?? DateTime.UtcNow.Date;
-                _db.AttendanceRecords.Add(new AttendanceRecord
-                {
-                    EmployeeId = employee.Id,
-                    Date = DateTime.SpecifyKind(date.Date, DateTimeKind.Utc),
-                    Status = AttendanceStatus.Present, Source = "MissingPunch", ReferenceId = instance.Id,
-                    CheckIn = CombineDateTime(date, V("checkIn")), CheckOut = CombineDateTime(date, V("checkOut")),
-                    Notes = V("reason"),
-                });
-            }
-            // Attendance Correction (non-leave) → upsert the day's record + recalc-ready.
-            else if (impact.AffectsAttendance && instance.LeaveTypeId is null)
-            {
-                var date = DateTime.SpecifyKind((ParseDate(V("startDate")) ?? DateTime.UtcNow.Date).Date, DateTimeKind.Utc);
-                var existing = await _db.AttendanceRecords.FirstOrDefaultAsync(a => a.EmployeeId == employee.Id && a.Date == date, ct);
-                if (existing is null)
-                    _db.AttendanceRecords.Add(new AttendanceRecord { EmployeeId = employee.Id, Date = date, Status = AttendanceStatus.Present, Source = "AttendanceCorrection", ReferenceId = instance.Id, Notes = V("reason") });
-                else { existing.Status = AttendanceStatus.Present; existing.Source = "AttendanceCorrection"; existing.Notes = V("reason"); }
-            }
-        }
-
-        // Document generation is mapping-driven now (see DocumentGenerationService), fired by the
-        // lifecycle trigger points in Submit/Decide — not from the impact engine.
-
-        if (impact.AffectsTimeline)
-            await _timeline.PublishEvent("Requests", "Employee", employee.Id, "RequestApproved",
-                $"{type.NameEn} approved", $"تمت الموافقة على {type.NameAr}", new { instance.RequestNumber }, ct);
-        if (impact.AffectsAudit)
-            await _audit.LogChange("RequestInstance", instance.Id, "Approved", null, new { instance.RequestNumber, type.Code }, ct);
     }
 
     // ── Approval-chain resolution from the linked workflow ──────────────────────
@@ -666,13 +511,6 @@ public sealed class RequestEngine : IRequestEngine
         return $"REQ-{year}-{(count + 1):D6}";
     }
 
-    private async Task<string> NextLeaveNumberAsync(CancellationToken ct)
-    {
-        var year = DateTime.UtcNow.Year;
-        var count = await _db.LeaveRecords.CountAsync(ct);
-        return $"LV-{year}-{(count + 1):D6}";
-    }
-
     private static string? Val(IReadOnlyList<RequestValueInput> values, string code)
         => values.FirstOrDefault(v => string.Equals(v.FieldCode, code, StringComparison.OrdinalIgnoreCase))?.Value;
 
@@ -682,24 +520,6 @@ public sealed class RequestEngine : IRequestEngine
 
     private static Guid? ParseGuid(string? raw)
         => Guid.TryParse(raw, out var g) ? g : null;
-
-    /// <summary>Load a submission's values into a fieldCode → (value, fileUrl) map.</summary>
-    private async Task<Dictionary<string, (string? Value, string? FileUrl)>> LoadFormValuesAsync(Guid submissionId, CancellationToken ct)
-    {
-        var vals = await _db.FormSubmissionValues.Where(v => v.FormSubmissionId == submissionId)
-            .Select(v => new { v.FieldCode, v.Value, v.FileUrl }).ToListAsync(ct);
-        return vals.GroupBy(v => v.FieldCode, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => (g.Last().Value, g.Last().FileUrl), StringComparer.OrdinalIgnoreCase);
-    }
-
-    /// <summary>Combine a date with an "HH:mm" time string into a UTC DateTime (null when no time).</summary>
-    private static DateTime? CombineDateTime(DateTime date, string? time)
-    {
-        if (string.IsNullOrWhiteSpace(time)) return null;
-        if (TimeSpan.TryParse(time, out var t))
-            return DateTime.SpecifyKind(date.Date.Add(t), DateTimeKind.Utc);
-        return null;
-    }
 
     private static ValidationException Invalid(string field, string message)
         => new(new[] { new ValidationFailure(field, message) });

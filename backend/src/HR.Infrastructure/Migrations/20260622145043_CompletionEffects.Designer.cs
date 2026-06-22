@@ -3,6 +3,7 @@ using System;
 using HR.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace HR.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260622145043_CompletionEffects")]
+    partial class CompletionEffects
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -2748,265 +2751,6 @@ namespace HR.Infrastructure.Migrations
                     b.ToTable("stored_files", (string)null);
                 });
 
-            modelBuilder.Entity("HR.Domain.Engines.FlowBuilder.WorkflowAuditTrail", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Action")
-                        .IsRequired()
-                        .HasMaxLength(60)
-                        .HasColumnType("character varying(60)");
-
-                    b.Property<Guid?>("ActorId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Comment")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("CreatedBy")
-                        .HasColumnType("text");
-
-                    b.Property<DateTime?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("DeletedBy")
-                        .HasColumnType("text");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTime>("OccurredAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("RequestId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Result")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<Guid?>("StepId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("StepName")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("ToStepId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("UpdatedBy")
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("RequestId");
-
-                    b.ToTable("flow_workflow_audit_trail", (string)null);
-                });
-
-            modelBuilder.Entity("HR.Domain.Engines.FlowBuilder.WorkflowDefinition", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasMaxLength(120)
-                        .HasColumnType("character varying(120)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("CreatedBy")
-                        .HasColumnType("text");
-
-                    b.Property<DateTime?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("DeletedBy")
-                        .HasColumnType("text");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<Guid?>("RootStepId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("UpdatedBy")
-                        .HasColumnType("text");
-
-                    b.Property<int>("Version")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TenantId", "Code")
-                        .IsUnique();
-
-                    b.ToTable("flow_workflow_definitions", (string)null);
-                });
-
-            modelBuilder.Entity("HR.Domain.Engines.FlowBuilder.WorkflowRequest", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("CompletedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("CreatedBy")
-                        .HasColumnType("text");
-
-                    b.Property<Guid?>("CurrentStepId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("DefinitionId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("DeletedBy")
-                        .HasColumnType("text");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("Payload")
-                        .IsRequired()
-                        .HasColumnType("jsonb");
-
-                    b.Property<string>("RequestNumber")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)");
-
-                    b.Property<Guid>("RequesterId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("StartedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("integer");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("UpdatedBy")
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("RequesterId");
-
-                    b.HasIndex("TenantId");
-
-                    b.HasIndex("DefinitionId", "Status");
-
-                    b.ToTable("flow_workflow_requests", (string)null);
-                });
-
-            modelBuilder.Entity("HR.Domain.Engines.FlowBuilder.WorkflowStep", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Config")
-                        .IsRequired()
-                        .HasColumnType("jsonb");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("CreatedBy")
-                        .HasColumnType("text");
-
-                    b.Property<Guid>("DefinitionId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("DeletedBy")
-                        .HasColumnType("text");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<Guid?>("NextStepIdFailure")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("NextStepIdSuccess")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("integer");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("Type")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("UpdatedBy")
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("DefinitionId");
-
-                    b.ToTable("flow_workflow_steps", (string)null);
-                });
-
             modelBuilder.Entity("HR.Domain.Engines.Forms.FormDefinition", b =>
                 {
                     b.Property<Guid>("Id")
@@ -5349,21 +5093,6 @@ namespace HR.Infrastructure.Migrations
                     b.Property<Guid?>("AssignedToUserId")
                         .HasColumnType("uuid");
 
-                    b.Property<bool>("CanDelegate")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false);
-
-                    b.Property<bool>("CanReject")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(true);
-
-                    b.Property<bool>("CanReturn")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(true);
-
                     b.Property<string>("Comment")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
@@ -5376,11 +5105,6 @@ namespace HR.Infrastructure.Migrations
 
                     b.Property<DateTime?>("DueAt")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("IsOptional")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false);
 
                     b.Property<Guid>("RequestInstanceId")
                         .HasColumnType("uuid");
@@ -8654,39 +8378,6 @@ namespace HR.Infrastructure.Migrations
                     b.Navigation("DocumentTemplate");
                 });
 
-            modelBuilder.Entity("HR.Domain.Engines.FlowBuilder.WorkflowAuditTrail", b =>
-                {
-                    b.HasOne("HR.Domain.Engines.FlowBuilder.WorkflowRequest", "Request")
-                        .WithMany("AuditTrail")
-                        .HasForeignKey("RequestId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Request");
-                });
-
-            modelBuilder.Entity("HR.Domain.Engines.FlowBuilder.WorkflowRequest", b =>
-                {
-                    b.HasOne("HR.Domain.Engines.FlowBuilder.WorkflowDefinition", "Definition")
-                        .WithMany("Requests")
-                        .HasForeignKey("DefinitionId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Definition");
-                });
-
-            modelBuilder.Entity("HR.Domain.Engines.FlowBuilder.WorkflowStep", b =>
-                {
-                    b.HasOne("HR.Domain.Engines.FlowBuilder.WorkflowDefinition", "Definition")
-                        .WithMany("Steps")
-                        .HasForeignKey("DefinitionId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Definition");
-                });
-
             modelBuilder.Entity("HR.Domain.Engines.Forms.FormField", b =>
                 {
                     b.HasOne("HR.Domain.Engines.Forms.FormDefinition", "FormDefinition")
@@ -9390,18 +9081,6 @@ namespace HR.Infrastructure.Migrations
                     b.Navigation("Tokens");
 
                     b.Navigation("Versions");
-                });
-
-            modelBuilder.Entity("HR.Domain.Engines.FlowBuilder.WorkflowDefinition", b =>
-                {
-                    b.Navigation("Requests");
-
-                    b.Navigation("Steps");
-                });
-
-            modelBuilder.Entity("HR.Domain.Engines.FlowBuilder.WorkflowRequest", b =>
-                {
-                    b.Navigation("AuditTrail");
                 });
 
             modelBuilder.Entity("HR.Domain.Engines.Forms.FormDefinition", b =>
