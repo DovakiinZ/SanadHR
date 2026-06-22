@@ -61,8 +61,9 @@ export function Sidebar() {
   return (
     <aside className="fixed top-0 right-0 z-40 h-screen w-16 border-l border-border bg-secondary flex flex-col items-center py-4">
       {/* Logo */}
-      <Link href="/dashboard" className="mb-6 flex h-10 w-10 items-center justify-center" aria-label="سند">
-        <span className="font-serif-display text-2xl font-black leading-none text-primary">سند</span>
+      <Link href="/dashboard" className="mb-6 flex w-14 items-center justify-center" aria-label="سند">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/sanad-logo.svg" alt="سند" className="h-auto w-full" />
       </Link>
 
       {/* Nav */}

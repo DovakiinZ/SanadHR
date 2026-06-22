@@ -46,7 +46,8 @@ export default function LoginPage() {
     <div className="border border-border bg-card p-8">
       {/* Logo */}
       <div className="mb-8 text-center">
-        <span className="font-serif-display text-5xl font-black leading-none text-primary">سند</span>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/sanad-logo.svg" alt="سند" className="mx-auto mb-3 h-14 w-auto" />
         <p className="text-sm text-muted-foreground mt-2">نظام إدارة الموارد البشرية</p>
       </div>
 
