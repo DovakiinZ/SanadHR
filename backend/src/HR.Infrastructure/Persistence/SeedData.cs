@@ -11,7 +11,7 @@ public static class SeedData
         var modules = new Dictionary<string, string[]>
         {
             ["Identity"] = new[] { "ViewUsers", "CreateUsers", "EditUsers", "DeleteUsers", "ViewRoles", "CreateRoles", "EditRoles", "DeleteRoles" },
-            ["Employees"] = new[] { "View", "Create", "Edit", "Delete", "Export" },
+            ["Employees"] = new[] { "View", "Create", "Edit", "Delete", "Export", "Terminate" },
             ["Tasks"] = new[] { "View", "Create", "Edit", "Delete", "Assign" },
             ["Departments"] = new[] { "View", "Create", "Edit", "Delete" },
             ["Branches"] = new[] { "View", "Create", "Edit", "Delete" },

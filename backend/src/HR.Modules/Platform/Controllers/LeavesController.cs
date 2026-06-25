@@ -1,6 +1,8 @@
 using HR.Api.Controllers;
 using HR.Application.Common.Interfaces;
 using HR.Application.Common.Models;
+using HR.Application.Engines.Leave;
+using HR.Domain.Engines.MasterData;
 using HR.Infrastructure.Persistence;
 using HR.Modules.Platform.DTOs.Leaves;
 using HR.Modules.Platform.Services.Leaves;
@@ -19,10 +21,11 @@ public class LeavesController : BaseApiController
     private readonly ILeaveRecordService _svc;
     private readonly ApplicationDbContext _db;
     private readonly ICurrentUserService _user;
+    private readonly ILeaveAccrualEngine _accrual;
 
-    public LeavesController(ILeaveRecordService svc, ApplicationDbContext db, ICurrentUserService user)
+    public LeavesController(ILeaveRecordService svc, ApplicationDbContext db, ICurrentUserService user, ILeaveAccrualEngine accrual)
     {
-        _svc = svc; _db = db; _user = user;
+        _svc = svc; _db = db; _user = user; _accrual = accrual;
     }
 
     private bool Has(params string[] perms) => perms.Any(p => _user.Permissions.Contains(p));
@@ -112,4 +115,35 @@ public class LeavesController : BaseApiController
         var rows = await _svc.GetEmployeeBalanceAsync(id, ct);
         return OkResponse(rows);
     }
+
+    /// <summary>The accrual ledger (accrual + usage transactions) for an employee + leave type, with a
+    /// continuous running balance and unpaid-leave periods — drives the vertical timeline view.
+    /// Defaults to the annual leave type when leaveTypeId is omitted.</summary>
+    [HttpGet("/api/employees/{id:guid}/leave-ledger")]
+    public async Task<ActionResult<ApiResponse<LeaveLedgerView>>> LeaveLedger(Guid id, [FromQuery] Guid? leaveTypeId, CancellationToken ct)
+    {
+        if (!CanViewAll && id != await MyEmployeeIdAsync(ct)) return StatusCode(403, ApiResponse<LeaveLedgerView>.Fail("ليس لديك صلاحية"));
+        var typeId = leaveTypeId ?? await AnnualLeaveTypeIdAsync(ct);
+        if (typeId is not { } lt) return NotFound(ApiResponse<LeaveLedgerView>.Fail("نوع الإجازة غير موجود"));
+        var view = await _accrual.GetLedgerAsync(id, lt, ct);
+        return OkResponse(view);
+    }
+
+    /// <summary>Rebuild the accrual ledger for an employee + leave type (defaults to annual). Returns the
+    /// refreshed ledger.</summary>
+    [HttpPost("/api/employees/{id:guid}/leave-ledger/recalculate")]
+    public async Task<ActionResult<ApiResponse<LeaveLedgerView>>> RecalculateLedger(Guid id, [FromQuery] Guid? leaveTypeId, CancellationToken ct)
+    {
+        if (!CanEdit) return Denied();
+        var typeId = leaveTypeId ?? await AnnualLeaveTypeIdAsync(ct);
+        if (typeId is not { } lt) return NotFound(ApiResponse<LeaveLedgerView>.Fail("نوع الإجازة غير موجود"));
+        await _accrual.RecalculateAsync(id, lt, ct);
+        var view = await _accrual.GetLedgerAsync(id, lt, ct);
+        return OkResponse(view);
+    }
+
+    private Task<Guid?> AnnualLeaveTypeIdAsync(CancellationToken ct) =>
+        _db.MasterDataItems.AsNoTracking()
+            .Where(m => m.ObjectType == MasterDataObjectType.LeaveType && m.Code == "ANNUAL")
+            .Select(m => (Guid?)m.Id).FirstOrDefaultAsync(ct);
 }

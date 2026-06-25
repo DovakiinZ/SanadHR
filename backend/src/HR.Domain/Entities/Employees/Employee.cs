@@ -22,6 +22,10 @@ public class Employee : TenantEntity
     public Guid? EmploymentTypeId { get; set; }
     public DateTime HireDate { get; set; }
     public DateTime? TerminationDate { get; set; }
+    /// <summary>Fixed-term vs indefinite — drives Article 77 invalid-termination compensation.</summary>
+    public ContractTermType ContractTermType { get; set; } = ContractTermType.Indefinite;
+    /// <summary>Contract end date for fixed-term contracts (Article 77 remaining-wages calculation).</summary>
+    public DateTime? ContractEndDate { get; set; }
     public Guid? JobTitleId { get; set; }
     public Guid? DepartmentId { get; set; }
     public Guid? BranchId { get; set; }

@@ -69,6 +69,7 @@ public sealed class LeaveCreateApprovedLeaveExecutor : IEffectExecutor
             _db.LeaveBalanceTransactions.Add(new LeaveBalanceTransaction
             {
                 EmployeeId = ctx.EmployeeId, LeaveTypeId = leaveTypeId, Year = year, LeaveRecordId = record.Id,
+                Type = LeaveTransactionType.Usage,
                 Delta = -days, BalanceAfter = balanceAfter, Reason = "Leave request approved",
                 ActorUserId = ctx.ActorUserId, At = DateTime.UtcNow,
             });

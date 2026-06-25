@@ -17,3 +17,15 @@ public enum LeaveRecordSource
     Import = 3,
     System = 4,
 }
+
+/// <summary>Classifies a LeaveBalanceTransaction. Usage/Restoration are written by the leave
+/// record lifecycle (deduction on approval, restore on cancel); Accrual/Forfeiture are written by
+/// the leave accrual engine. Existing rows default to Usage.</summary>
+public enum LeaveTransactionType
+{
+    Usage = 1,        // -days, deducted when leave is approved/assigned
+    Accrual = 2,      // +days, periodic entitlement earned over service
+    Adjustment = 3,   // manual +/- correction by HR
+    Forfeiture = 4,   // -days, expired/capped entitlement removed
+    Restoration = 5,  // +days, returned when a leave is canceled/edited
+}

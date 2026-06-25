@@ -3,15 +3,19 @@ using HR.Application.Engines.Audit;
 using HR.Application.Engines.Completion;
 using HR.Application.Engines.Automation;
 using HR.Application.Engines.Permissions;
+using HR.Application.Engines.Settlement;
 using HR.Application.Engines.Timeline;
 using HR.Application.Engines.Tokens;
 using HR.Application.Engines.Workflows;
+using HR.Application.Engines.Leave;
 using HR.Infrastructure.Engines.Audit;
 using HR.Infrastructure.Engines.Automation;
 using HR.Infrastructure.Engines.Permissions;
+using HR.Infrastructure.Engines.Settlement;
 using HR.Infrastructure.Engines.Timeline;
 using HR.Infrastructure.Engines.Tokens;
 using HR.Infrastructure.Engines.Workflows;
+using HR.Infrastructure.Engines.Leave;
 using HR.Modules.Platform.Services;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -31,6 +35,8 @@ public static class DependencyInjection
         services.AddScoped<IAuditEngine, AuditEngine>();
         services.AddScoped<ITimelineEngine, TimelineEngine>();
         services.AddScoped<ITokenResolver, TokenResolver>();
+        services.AddScoped<IEndOfServiceEngine, EndOfServiceEngine>();
+        services.AddScoped<ILeaveAccrualEngine, LeaveAccrualEngine>();
 
         // Master Data Engine services
         services.AddScoped<ILookupService, LookupService>();

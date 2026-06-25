@@ -1,5 +1,6 @@
 using HR.Application.Common.Interfaces;
 using HR.Application.Engines.Audit;
+using HR.Application.Engines.Leave;
 using HR.Application.Engines.Timeline;
 using HR.Domain.Engines.Attendance;
 using HR.Domain.Engines.Documents;
@@ -35,11 +36,13 @@ public sealed class LeaveRecordService : ILeaveRecordService
     private readonly IAuditEngine _audit;
     private readonly INotificationService _notify;
     private readonly IDocumentRenderer _renderer;
+    private readonly ILeaveAccrualEngine _accrual;
 
     public LeaveRecordService(ApplicationDbContext db, ICurrentUserService user, ILeaveService leave,
-        ITimelineEngine timeline, IAuditEngine audit, INotificationService notify, IDocumentRenderer renderer)
+        ITimelineEngine timeline, IAuditEngine audit, INotificationService notify, IDocumentRenderer renderer,
+        ILeaveAccrualEngine accrual)
     {
-        _db = db; _user = user; _leave = leave; _timeline = timeline; _audit = audit; _notify = notify; _renderer = renderer;
+        _db = db; _user = user; _leave = leave; _timeline = timeline; _audit = audit; _notify = notify; _renderer = renderer; _accrual = accrual;
     }
 
     private static DateTime Utc(DateTime d) => DateTime.SpecifyKind(d.Date, DateTimeKind.Utc);
@@ -211,6 +214,9 @@ public sealed class LeaveRecordService : ILeaveRecordService
 
         await _audit.LogChange("LeaveAssignment", assignment.Id, "Created", null, new { assignment.AssignedCount, leaveItem.Code }, ct);
         await _db.SaveChangesAsync(ct);
+
+        // Unpaid leave shifts seniority — rebuild the annual accrual ledger for the affected employees.
+        if (!rules.Paid) await RecalcAnnualForEmployeesAsync(empIds, ct);
         return empIds.Count;
     }
 
@@ -266,6 +272,7 @@ public sealed class LeaveRecordService : ILeaveRecordService
             $"تم تعديل الإجازة لتصبح من {newStart:yyyy-MM-dd} إلى {newEnd:yyyy-MM-dd}", $"Leave updated {newStart:yyyy-MM-dd} → {newEnd:yyyy-MM-dd}", r.Id, ct);
 
         await _db.SaveChangesAsync(ct);
+        await RecalcAnnualIfUnpaidAsync(r.EmployeeId, new[] { oldType, newType }, ct);
     }
 
     // ── Cancel ───────────────────────────────────────────────────────────────────
@@ -304,6 +311,7 @@ public sealed class LeaveRecordService : ILeaveRecordService
             $"تم إلغاء الإجازة {r.RecordNumber}" + (reason is { Length: > 0 } ? $" — {reason}" : ""), $"Leave {r.RecordNumber} canceled", r.Id, ct);
 
         await _db.SaveChangesAsync(ct);
+        await RecalcAnnualIfUnpaidAsync(r.EmployeeId, new[] { r.LeaveTypeId }, ct);
     }
 
     // ── Employee balance ──────────────────────────────────────────────────────────
@@ -467,6 +475,8 @@ public sealed class LeaveRecordService : ILeaveRecordService
         _db.LeaveBalanceTransactions.Add(new LeaveBalanceTransaction
         {
             EmployeeId = employeeId, LeaveTypeId = leaveTypeId, Year = year, LeaveRecordId = recordId,
+            // deltaDays > 0 deducts (Usage); deltaDays < 0 restores balance (Restoration).
+            Type = deltaDays >= 0 ? LeaveTransactionType.Usage : LeaveTransactionType.Restoration,
             Delta = -deltaDays, BalanceAfter = remaining, Reason = reason, ActorUserId = _user.UserId, At = DateTime.UtcNow,
         });
         return remaining;
@@ -491,6 +501,37 @@ public sealed class LeaveRecordService : ILeaveRecordService
                         && a.Status == AttendanceStatus.OnLeave && a.ReferenceId != null && refIds.Contains(a.ReferenceId.Value))
             .ToListAsync(ct);
         foreach (var a in rows) a.IsDeleted = true;
+    }
+
+    /// <summary>True when a leave type's rules mark it unpaid (Paid=false).</summary>
+    private async Task<bool> IsUnpaidTypeAsync(Guid leaveTypeId, CancellationToken ct)
+    {
+        var json = await _db.MasterDataItems.AsNoTracking().Where(m => m.Id == leaveTypeId).Select(m => m.MetadataJson).FirstOrDefaultAsync(ct);
+        return !_leave.GetRules(json).Paid;
+    }
+
+    private async Task<Guid?> AnnualLeaveTypeIdAsync(CancellationToken ct)
+        => await _db.MasterDataItems.AsNoTracking()
+            .Where(m => m.ObjectType == MasterDataObjectType.LeaveType && m.Code == "ANNUAL")
+            .Select(m => (Guid?)m.Id).FirstOrDefaultAsync(ct);
+
+    /// <summary>If any of the changed leave types is unpaid, rebuild the employee's annual accrual ledger
+    /// (unpaid leave shifts the seniority service end-date).</summary>
+    private async Task RecalcAnnualIfUnpaidAsync(Guid employeeId, IEnumerable<Guid> changedTypeIds, CancellationToken ct)
+    {
+        var anyUnpaid = false;
+        foreach (var id in changedTypeIds.Distinct())
+            if (await IsUnpaidTypeAsync(id, ct)) { anyUnpaid = true; break; }
+        if (!anyUnpaid) return;
+        if (await AnnualLeaveTypeIdAsync(ct) is { } annualId)
+            await _accrual.RecalculateAsync(employeeId, annualId, ct);
+    }
+
+    private async Task RecalcAnnualForEmployeesAsync(IEnumerable<Guid> employeeIds, CancellationToken ct)
+    {
+        if (await AnnualLeaveTypeIdAsync(ct) is not { } annualId) return;
+        foreach (var emp in employeeIds.Distinct())
+            await _accrual.RecalculateAsync(emp, annualId, ct);
     }
 
     private void AddAudit(Guid recordId, Guid employeeId, string action, string ar, string en)

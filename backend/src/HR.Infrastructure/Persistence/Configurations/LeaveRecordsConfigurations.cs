@@ -30,6 +30,7 @@ public class LeaveBalanceTransactionConfiguration : IEntityTypeConfiguration<Lea
     {
         builder.ToTable("engine_leave_balance_transactions");
         builder.HasKey(x => x.Id);
+        builder.Property(x => x.Type).HasDefaultValue(HR.Domain.Enums.LeaveTransactionType.Usage);
         builder.Property(x => x.Delta).HasColumnType("decimal(8,2)");
         builder.Property(x => x.BalanceAfter).HasColumnType("decimal(8,2)");
         builder.Property(x => x.Reason).HasMaxLength(500);

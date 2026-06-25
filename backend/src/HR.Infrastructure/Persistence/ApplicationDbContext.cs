@@ -58,6 +58,8 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<EmployeeAllowance> EmployeeAllowances => Set<EmployeeAllowance>();
     public DbSet<EmployeeAddition> EmployeeAdditions => Set<EmployeeAddition>();
     public DbSet<EmployeeDeduction> EmployeeDeductions => Set<EmployeeDeduction>();
+    public DbSet<TerminationSettlement> TerminationSettlements => Set<TerminationSettlement>();
+    public DbSet<TerminationSettlementItem> TerminationSettlementItems => Set<TerminationSettlementItem>();
 
     // Tasks
     public DbSet<HrTask> HrTasks => Set<HrTask>();

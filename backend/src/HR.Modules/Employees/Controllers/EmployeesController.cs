@@ -66,4 +66,25 @@ public class EmployeesController : BaseApiController
         await Mediator.Send(new DeleteEmployeeCommand(id), ct);
         return OkResponse("Employee deleted");
     }
+
+    /// <summary>Preview an end-of-service settlement (Saudi Labor Law Art. 77/80/81 over the Art. 84/85
+    /// gratuity) without persisting — drives the termination form's live award breakdown.</summary>
+    [HttpPost("{id:guid}/settlement/preview")]
+    [RequirePermission("Employees.Terminate")]
+    public async Task<ActionResult<ApiResponse<SettlementResultDto>>> PreviewSettlement(
+        Guid id, [FromBody] PreviewSettlementQuery query, CancellationToken ct)
+    {
+        var result = await Mediator.Send(query with { EmployeeId = id }, ct);
+        return OkResponse(result);
+    }
+
+    /// <summary>Compute + persist the settlement and transition the employee to Terminated/Resigned.</summary>
+    [HttpPost("{id:guid}/terminate")]
+    [RequirePermission("Employees.Terminate")]
+    public async Task<ActionResult<ApiResponse<SettlementResultDto>>> Terminate(
+        Guid id, [FromBody] TerminateEmployeeCommand command, CancellationToken ct)
+    {
+        var result = await Mediator.Send(command with { EmployeeId = id }, ct);
+        return OkResponse(result);
+    }
 }
