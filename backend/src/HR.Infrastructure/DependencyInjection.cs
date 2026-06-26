@@ -53,6 +53,10 @@ public static class DependencyInjection
         // Audit
         services.AddScoped<IAuditLogService, AuditLogService>();
 
+        // Unified permission resolver (roles ∪ templates ∪ allow − deny; deny wins) → feeds the JWT.
+        services.AddScoped<HR.Application.Engines.Permissions.IPermissionResolver, HR.Infrastructure.Engines.Permissions.PermissionResolver>();
+        services.AddScoped<HR.Application.Engines.Permissions.IAccessTemplateSeeder, HR.Infrastructure.Engines.Permissions.AccessTemplateSeeder>();
+
         // Financial Calculation Engine
         services.AddScoped<HR.Application.Engines.Finance.IFinancialLedger, HR.Infrastructure.Engines.Finance.FinancialLedger>();
         services.AddScoped<HR.Application.Engines.Finance.IRuleEngine, HR.Infrastructure.Engines.Finance.RuleEngine>();

@@ -55,6 +55,14 @@ public class AuthController : BaseApiController
         return OkResponse(new TokenResponse { AccessToken = accessToken, RefreshToken = refreshToken });
     }
 
+    [HttpPost("reset-password")]
+    [AllowAnonymous]
+    public async Task<ActionResult<ApiResponse>> ResetPassword([FromBody] HR.Modules.Identity.DTOs.AcceptResetRequest request, CancellationToken ct)
+    {
+        await _authService.AcceptResetAsync(request.Token, request.NewPassword, ct);
+        return OkResponse("Password set. You can now sign in.");
+    }
+
     [HttpGet("me")]
     [Authorize]
     public async Task<ActionResult<ApiResponse<UserInfo>>> Me(CancellationToken ct)

@@ -1,4 +1,5 @@
 using HR.Application.Common.Exceptions;
+using HR.Application.Engines.Permissions;
 using HR.Infrastructure.Persistence;
 using HR.Modules.Identity.Entities;
 using HR.Modules.Tenancy.Entities;
@@ -12,12 +13,15 @@ public class AuthService
     private readonly ApplicationDbContext _context;
     private readonly JwtTokenService _jwtTokenService;
     private readonly IConfiguration _configuration;
+    private readonly IPermissionResolver _permissionResolver;
 
-    public AuthService(ApplicationDbContext context, JwtTokenService jwtTokenService, IConfiguration configuration)
+    public AuthService(ApplicationDbContext context, JwtTokenService jwtTokenService,
+        IConfiguration configuration, IPermissionResolver permissionResolver)
     {
         _context = context;
         _jwtTokenService = jwtTokenService;
         _configuration = configuration;
+        _permissionResolver = permissionResolver;
     }
 
     public async Task<(string AccessToken, string RefreshToken, User User)> RegisterAsync(
@@ -82,8 +86,8 @@ public class AuthService
 
         await _context.SaveChangesAsync(ct);
 
-        // Generate tokens
-        var permissionNames = permissions.Select(p => $"{p.Module}.{p.Name}").ToList();
+        // Generate tokens — resolve effective permissions through the unified resolver.
+        var permissionNames = await _permissionResolver.ResolveAsync(user.Id, ct);
         var accessToken = _jwtTokenService.GenerateAccessToken(user, permissionNames);
         var refreshToken = await CreateRefreshTokenAsync(user.Id, ct);
 
@@ -105,13 +109,7 @@ public class AuthService
         if (!user.IsActive)
             throw new ForbiddenException("Account is deactivated.");
 
-        // Collect permissions
-        var permissions = user.UserRoles
-            .SelectMany(ur => ur.Role.RolePermissions)
-            .Select(rp => $"{rp.Permission.Module}.{rp.Permission.Name}")
-            .Union(user.UserPermissions.Select(up => $"{up.Permission.Module}.{up.Permission.Name}"))
-            .Distinct()
-            .ToList();
+        var permissions = await _permissionResolver.ResolveAsync(user.Id, ct);
 
         var accessToken = _jwtTokenService.GenerateAccessToken(user, permissions);
         var refreshToken = await CreateRefreshTokenAsync(user.Id, ct);
@@ -141,16 +139,12 @@ public class AuthService
 
         var user = await _context.Users
             .IgnoreQueryFilters()
-            .Include(u => u.UserRoles).ThenInclude(ur => ur.Role).ThenInclude(r => r.RolePermissions).ThenInclude(rp => rp.Permission)
-            .Include(u => u.UserPermissions).ThenInclude(up => up.Permission)
             .FirstAsync(u => u.Id == userId && !u.IsDeleted, ct);
 
-        var permissions = user.UserRoles
-            .SelectMany(ur => ur.Role.RolePermissions)
-            .Select(rp => $"{rp.Permission.Module}.{rp.Permission.Name}")
-            .Union(user.UserPermissions.Select(up => $"{up.Permission.Module}.{up.Permission.Name}"))
-            .Distinct()
-            .ToList();
+        if (!user.IsActive)
+            throw new ForbiddenException("Account is deactivated.");
+
+        var permissions = await _permissionResolver.ResolveAsync(user.Id, ct);
 
         var newAccessToken = _jwtTokenService.GenerateAccessToken(user, permissions);
         var newRefreshToken = await CreateRefreshTokenAsync(user.Id, ct);
@@ -158,6 +152,59 @@ public class AuthService
         await _context.SaveChangesAsync(ct);
 
         return (newAccessToken, newRefreshToken);
+    }
+
+    /// <summary>Issue a secure single-use token (reset or invite). Returns the RAW token to email; only
+    /// its SHA-256 hash is persisted, with an expiry.</summary>
+    public async Task<string> IssueResetTokenAsync(Guid userId, string purpose, TimeSpan ttl, CancellationToken ct = default)
+    {
+        var user = await _context.Users.IgnoreQueryFilters().FirstOrDefaultAsync(u => u.Id == userId && !u.IsDeleted, ct)
+            ?? throw new NotFoundException("User", userId);
+        var raw = GenerateUrlToken();
+        user.ResetTokenHash = Sha256(raw);
+        user.ResetTokenExpiresAt = DateTime.UtcNow.Add(ttl);
+        user.ResetTokenPurpose = purpose;
+        await _context.SaveChangesAsync(ct);
+        return raw;
+    }
+
+    /// <summary>Consume a reset/invite token: set the new password, activate the account, clear the token
+    /// and revoke any outstanding refresh tokens.</summary>
+    public async Task AcceptResetAsync(string rawToken, string newPassword, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(rawToken) || string.IsNullOrWhiteSpace(newPassword))
+            throw new ConflictException("Token and new password are required.");
+        var hash = Sha256(rawToken);
+        var user = await _context.Users.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.ResetTokenHash == hash && !u.IsDeleted, ct)
+            ?? throw new ForbiddenException("Invalid or expired token.");
+        if (user.ResetTokenExpiresAt is null || user.ResetTokenExpiresAt < DateTime.UtcNow)
+            throw new ForbiddenException("Invalid or expired token.");
+
+        user.PasswordHash = PasswordHasher.Hash(newPassword);
+        user.ResetTokenHash = null;
+        user.ResetTokenExpiresAt = null;
+        user.ResetTokenPurpose = null;
+        user.IsActive = true;
+        user.Status = HR.Domain.Enums.UserStatus.Active;
+
+        var tokens = await _context.RefreshTokens.Where(t => t.UserId == user.Id && !t.IsRevoked).ToListAsync(ct);
+        foreach (var t in tokens) t.IsRevoked = true;
+
+        await _context.SaveChangesAsync(ct);
+    }
+
+    public static string Sha256(string value)
+    {
+        using var sha = System.Security.Cryptography.SHA256.Create();
+        var bytes = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(value));
+        return Convert.ToHexString(bytes);
+    }
+
+    private static string GenerateUrlToken()
+    {
+        var bytes = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
+        return Convert.ToBase64String(bytes).Replace("+", "-").Replace("/", "_").Replace("=", "");
     }
 
     private async Task<string> CreateRefreshTokenAsync(Guid userId, CancellationToken ct)

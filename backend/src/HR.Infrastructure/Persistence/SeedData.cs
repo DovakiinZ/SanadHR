@@ -11,14 +11,15 @@ public static class SeedData
         var modules = new Dictionary<string, string[]>
         {
             ["Identity"] = new[] { "ViewUsers", "CreateUsers", "EditUsers", "DeleteUsers", "ViewRoles", "CreateRoles", "EditRoles", "DeleteRoles" },
-            ["Employees"] = new[] { "View", "Create", "Edit", "Delete", "Export", "Terminate" },
+            ["Employees"] = new[] { "View", "Create", "Edit", "Delete", "Export", "Terminate", "ViewSettlement" },
             ["Tasks"] = new[] { "View", "Create", "Edit", "Delete", "Assign" },
             ["Departments"] = new[] { "View", "Create", "Edit", "Delete" },
             ["Branches"] = new[] { "View", "Create", "Edit", "Delete" },
-            ["Settings"] = new[] { "View", "Edit" },
+            ["Settings"] = new[] { "View", "Edit", "ManageUsers", "ManageRoles", "ManageTemplates", "ViewAudit" },
             ["Attendance"] = new[] { "View", "Create", "Edit", "Delete", "Export" },
             ["Leaves"] = new[] { "View", "Create", "Edit", "Delete", "Assign", "Cancel" },
-            ["Payroll"] = new[] { "View", "Create", "Edit", "Delete", "Approve", "Export" },
+            ["Payroll"] = new[] { "View", "Create", "Edit", "Delete", "Approve", "Export", "Run", "Lock" },
+            ["Requests"] = new[] { "View", "Create", "Edit", "Approve", "Reject" },
             ["Expenses"] = new[] { "View", "Create", "Edit", "Delete", "Approve" },
             ["Loans"] = new[] { "View", "Create", "Edit", "Delete", "Approve" },
             ["Documents"] = new[] { "View", "Create", "Edit", "Delete" },

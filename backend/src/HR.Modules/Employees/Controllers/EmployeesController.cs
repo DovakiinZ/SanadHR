@@ -70,7 +70,7 @@ public class EmployeesController : BaseApiController
     /// <summary>Preview an end-of-service settlement (Saudi Labor Law Art. 77/80/81 over the Art. 84/85
     /// gratuity) without persisting — drives the termination form's live award breakdown.</summary>
     [HttpPost("{id:guid}/settlement/preview")]
-    [RequirePermission("Employees.Terminate")]
+    [RequirePermission("Employees.Terminate", "Employees.ViewSettlement")]
     public async Task<ActionResult<ApiResponse<SettlementResultDto>>> PreviewSettlement(
         Guid id, [FromBody] PreviewSettlementQuery query, CancellationToken ct)
     {

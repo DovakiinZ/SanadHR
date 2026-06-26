@@ -8,11 +8,13 @@ namespace HR.Api.Filters;
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method)]
 public class RequirePermissionAttribute : Attribute, IAsyncAuthorizationFilter
 {
-    private readonly string _permission;
+    private readonly string[] _permissions;
 
-    public RequirePermissionAttribute(string permission)
+    /// <summary>The user must hold AT LEAST ONE of the supplied permissions (OR semantics). A single
+    /// permission keeps the original behaviour.</summary>
+    public RequirePermissionAttribute(params string[] permissions)
     {
-        _permission = permission;
+        _permissions = permissions;
     }
 
     public async Task OnAuthorizationAsync(AuthorizationFilterContext context)
@@ -25,7 +27,7 @@ public class RequirePermissionAttribute : Attribute, IAsyncAuthorizationFilter
             return;
         }
 
-        if (!currentUser.Permissions.Contains(_permission))
+        if (_permissions.Length > 0 && !_permissions.Any(p => currentUser.Permissions.Contains(p)))
         {
             context.Result = new ForbidResult();
             return;
