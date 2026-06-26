@@ -1,36 +1,87 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SanadHR
 
-## Getting Started
+**SanadHR** is a next-generation Human Resources Operating System (HR OS) designed to help organizations manage their entire workforce through a single, intelligent, and highly configurable platform.
 
-First, run the development server:
+Unlike traditional HR software that relies on rigid workflows and hardcoded business logic, SanadHR is built around a modular, enterprise-grade architecture where every process—from attendance and leave management to payroll, workflows, and document automation—is configurable to match each organization's unique policies.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+At its core, SanadHR combines modern software architecture with a powerful calculation engine, workflow automation, and comprehensive audit capabilities to provide a scalable foundation for businesses of all sizes.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Core Capabilities
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+* Employee Lifecycle Management
+* Attendance & Time Tracking
+* Leave Management
+* Payroll Engine
+* Financial Calculation Engine
+* Expenses, Loans & Advances
+* End of Service Settlement
+* Dynamic Workflow Builder
+* Document Template Engine
+* Digital Signatures
+* Report Builder & Analytics
+* Organization Structure & Hierarchy
+* Tasks & Approvals
+* Multi-Company & Multi-Tenant Support
+* Fine-Grained Role & Permission Management
+* Complete Audit Trail
+* API-First Architecture
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Enterprise Architecture
 
-## Learn More
+SanadHR is engineered using modern enterprise patterns including:
 
-To learn more about Next.js, take a look at the following resources:
+* Clean Architecture
+* Domain-Driven Design (DDD)
+* CQRS
+* Event-Driven Design
+* Immutable Financial Ledger
+* Rule Engine
+* Formula Engine
+* Snapshot & Versioning System
+* Workflow Engine
+* State Machine
+* Dependency Graph Execution
+* Background Processing
+* Multi-Tenant Isolation
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+This architecture allows organizations to evolve their HR policies without modifying application code.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Payroll Engine
 
-## Deploy on Vercel
+The Payroll Engine is designed as a financial calculation platform rather than a simple payroll calculator.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Key features include:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+* Configurable Payroll Definitions
+* Immutable Ledger-Based Calculations
+* Dynamic Formula Engine
+* Rule-Based Salary Calculations
+* Payroll Preview
+* Payroll Snapshots
+* Versioned Payroll Policies
+* Multi-Step Approval Workflow
+* Batch Processing
+* Validation Engine
+* Transparent Calculation Logic
+* Complete Auditability
+
+Every payroll calculation can be reproduced, audited, and explained long after execution.
+
+## Designed for Scale
+
+SanadHR is built to support organizations ranging from small businesses to enterprise environments with thousands of employees.
+
+The platform emphasizes:
+
+* High Performance
+* Reliability
+* Security
+* Configurability
+* Maintainability
+* Extensibility
+
+## Vision
+
+Our vision is to build an HR Operating System—not just another HR application.
+
+Every module is designed as a reusable engine capable of powering multiple business processes, ensuring that SanadHR can continue to evolve alongside modern organizations for years to come.
