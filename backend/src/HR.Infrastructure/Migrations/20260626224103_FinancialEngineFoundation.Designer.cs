@@ -3,6 +3,7 @@ using System;
 using HR.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace HR.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260626224103_FinancialEngineFoundation")]
+    partial class FinancialEngineFoundation
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -3078,93 +3081,6 @@ namespace HR.Infrastructure.Migrations
                     b.ToTable("engine_payroll_definition_versions", (string)null);
                 });
 
-            modelBuilder.Entity("HR.Domain.Engines.Finance.Entities.PayrollPayslip", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("ComponentsJson")
-                        .HasColumnType("jsonb");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("CreatedBy")
-                        .HasColumnType("text");
-
-                    b.Property<string>("Currency")
-                        .IsRequired()
-                        .HasMaxLength(3)
-                        .HasColumnType("character varying(3)");
-
-                    b.Property<DateTime?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("DeletedBy")
-                        .HasColumnType("text");
-
-                    b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("EmployeeName")
-                        .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("character varying(300)");
-
-                    b.Property<string>("EmployeeNumber")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<string>("FactsJson")
-                        .HasColumnType("jsonb");
-
-                    b.Property<decimal>("GrossEarnings")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("LedgerPosted")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTime?>("LedgerPostedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<decimal>("NetAmount")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<Guid>("PayrollRunId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid");
-
-                    b.Property<decimal>("TotalDeductions")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("UpdatedBy")
-                        .HasColumnType("text");
-
-                    b.Property<string>("WarningsJson")
-                        .HasColumnType("jsonb");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("EmployeeId");
-
-                    b.HasIndex("TenantId");
-
-                    b.HasIndex("PayrollRunId", "EmployeeId")
-                        .IsUnique();
-
-                    b.ToTable("engine_payroll_payslips", (string)null);
-                });
-
             modelBuilder.Entity("HR.Domain.Engines.Finance.Entities.PayrollRun", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3249,12 +3165,6 @@ namespace HR.Infrastructure.Migrations
 
                     b.Property<string>("UpdatedBy")
                         .HasColumnType("text");
-
-                    b.Property<DateTime?>("ValidatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("ValidationResultJson")
-                        .HasColumnType("jsonb");
 
                     b.HasKey("Id");
 
@@ -9626,17 +9536,6 @@ namespace HR.Infrastructure.Migrations
                     b.Navigation("Definition");
                 });
 
-            modelBuilder.Entity("HR.Domain.Engines.Finance.Entities.PayrollPayslip", b =>
-                {
-                    b.HasOne("HR.Domain.Engines.Finance.Entities.PayrollRun", "Run")
-                        .WithMany("Payslips")
-                        .HasForeignKey("PayrollRunId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Run");
-                });
-
             modelBuilder.Entity("HR.Domain.Engines.Finance.Entities.PayrollRunTransition", b =>
                 {
                     b.HasOne("HR.Domain.Engines.Finance.Entities.PayrollRun", "Run")
@@ -10424,8 +10323,6 @@ namespace HR.Infrastructure.Migrations
 
             modelBuilder.Entity("HR.Domain.Engines.Finance.Entities.PayrollRun", b =>
                 {
-                    b.Navigation("Payslips");
-
                     b.Navigation("Transitions");
                 });
 

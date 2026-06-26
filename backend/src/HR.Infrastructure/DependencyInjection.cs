@@ -53,6 +53,24 @@ public static class DependencyInjection
         // Audit
         services.AddScoped<IAuditLogService, AuditLogService>();
 
+        // Financial Calculation Engine
+        services.AddScoped<HR.Application.Engines.Finance.IFinancialLedger, HR.Infrastructure.Engines.Finance.FinancialLedger>();
+        services.AddScoped<HR.Application.Engines.Finance.IRuleEngine, HR.Infrastructure.Engines.Finance.RuleEngine>();
+        services.AddScoped<HR.Application.Engines.Finance.IPayrollFactProvider, HR.Infrastructure.Engines.Finance.PayrollFactProvider>();
+        services.AddScoped<HR.Infrastructure.Engines.Finance.PayrollComputation>();
+        services.AddScoped<HR.Application.Engines.Finance.IPayrollPreviewEngine, HR.Infrastructure.Engines.Finance.PayrollPreviewEngine>();
+        services.AddScoped<HR.Application.Engines.Finance.IPayrollRunEngine, HR.Infrastructure.Engines.Finance.PayrollRunEngine>();
+
+        // Payroll validation engine + validators (specification pattern; add a class to add a check)
+        services.AddScoped<HR.Application.Engines.Finance.IPayrollValidationEngine, HR.Infrastructure.Engines.Finance.PayrollValidationEngine>();
+        services.AddScoped<HR.Application.Engines.Finance.IPayrollValidator, HR.Infrastructure.Engines.Finance.Validators.NegativeSalaryValidator>();
+        services.AddScoped<HR.Application.Engines.Finance.IPayrollValidator, HR.Infrastructure.Engines.Finance.Validators.InvalidGosiValidator>();
+        services.AddScoped<HR.Application.Engines.Finance.IPayrollValidator, HR.Infrastructure.Engines.Finance.Validators.DuplicateEmployeeValidator>();
+        services.AddScoped<HR.Application.Engines.Finance.IPayrollValidator, HR.Infrastructure.Engines.Finance.Validators.OverlappingPayrollValidator>();
+        services.AddScoped<HR.Application.Engines.Finance.IPayrollValidator, HR.Infrastructure.Engines.Finance.Validators.CurrencyValidator>();
+        services.AddScoped<HR.Application.Engines.Finance.IPayrollValidator, HR.Infrastructure.Engines.Finance.Validators.MissingAttendanceValidator>();
+        services.AddScoped<HR.Application.Engines.Finance.IPayrollValidator, HR.Infrastructure.Engines.Finance.Validators.RuleConflictValidator>();
+
         return services;
     }
 }

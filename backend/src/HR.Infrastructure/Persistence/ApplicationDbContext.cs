@@ -241,6 +241,18 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<HR.Domain.Engines.Notifications.NotificationRule> NotificationRules => Set<HR.Domain.Engines.Notifications.NotificationRule>();
     public DbSet<HR.Domain.Engines.Notifications.NotificationDispatch> NotificationDispatches => Set<HR.Domain.Engines.Notifications.NotificationDispatch>();
 
+    // Financial Calculation Engine (immutable ledger + versioned payroll definitions + configurable rules)
+    public DbSet<HR.Domain.Engines.Finance.Entities.FinancialLedgerEntry> FinancialLedgerEntries => Set<HR.Domain.Engines.Finance.Entities.FinancialLedgerEntry>();
+    public DbSet<HR.Domain.Engines.Finance.Entities.PayrollDefinition> PayrollDefinitions => Set<HR.Domain.Engines.Finance.Entities.PayrollDefinition>();
+    public DbSet<HR.Domain.Engines.Finance.Entities.PayrollDefinitionVersion> PayrollDefinitionVersions => Set<HR.Domain.Engines.Finance.Entities.PayrollDefinitionVersion>();
+    public DbSet<HR.Domain.Engines.Finance.Entities.RuleSet> FinanceRuleSets => Set<HR.Domain.Engines.Finance.Entities.RuleSet>();
+    public DbSet<HR.Domain.Engines.Finance.Entities.RuleSetVersion> FinanceRuleSetVersions => Set<HR.Domain.Engines.Finance.Entities.RuleSetVersion>();
+    public DbSet<HR.Domain.Engines.Finance.Entities.Rule> FinanceRules => Set<HR.Domain.Engines.Finance.Entities.Rule>();
+    public DbSet<HR.Domain.Engines.Finance.Entities.FormulaFunction> FinanceFormulaFunctions => Set<HR.Domain.Engines.Finance.Entities.FormulaFunction>();
+    public DbSet<HR.Domain.Engines.Finance.Entities.PayrollRun> PayrollRuns => Set<HR.Domain.Engines.Finance.Entities.PayrollRun>();
+    public DbSet<HR.Domain.Engines.Finance.Entities.PayrollRunTransition> PayrollRunTransitions => Set<HR.Domain.Engines.Finance.Entities.PayrollRunTransition>();
+    public DbSet<HR.Domain.Engines.Finance.Entities.PayrollPayslip> PayrollPayslips => Set<HR.Domain.Engines.Finance.Entities.PayrollPayslip>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
