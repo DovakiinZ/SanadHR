@@ -252,6 +252,7 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<HR.Domain.Engines.Finance.Entities.PayrollRun> PayrollRuns => Set<HR.Domain.Engines.Finance.Entities.PayrollRun>();
     public DbSet<HR.Domain.Engines.Finance.Entities.PayrollRunTransition> PayrollRunTransitions => Set<HR.Domain.Engines.Finance.Entities.PayrollRunTransition>();
     public DbSet<HR.Domain.Engines.Finance.Entities.PayrollPayslip> PayrollPayslips => Set<HR.Domain.Engines.Finance.Entities.PayrollPayslip>();
+    public DbSet<HR.Domain.Engines.Finance.Entities.PayrollRunItem> PayrollRunItems => Set<HR.Domain.Engines.Finance.Entities.PayrollRunItem>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

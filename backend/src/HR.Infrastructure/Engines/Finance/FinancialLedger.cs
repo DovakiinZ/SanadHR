@@ -25,7 +25,7 @@ public sealed class FinancialLedger : IFinancialLedger
 
     public async Task<FinancialLedgerEntry> PostAsync(LedgerPostingRequest request, CancellationToken ct = default)
     {
-        var entry = BuildEntry(request, await NextEntryNumberAsync(ct));
+        var entry = BuildEntry(request, request.EntryNumber ?? await NextEntryNumberAsync(ct));
         _db.Set<FinancialLedgerEntry>().Add(entry);
         await _db.SaveChangesAsync(ct);
         await _audit.LogAsync("LedgerPosted", nameof(FinancialLedgerEntry), entry.Id,
@@ -44,7 +44,7 @@ public sealed class FinancialLedger : IFinancialLedger
         var entries = new List<FinancialLedgerEntry>(list.Count);
         foreach (var request in list)
         {
-            entries.Add(BuildEntry(request, FormatEntryNumber(year, ++seq)));
+            entries.Add(BuildEntry(request, request.EntryNumber ?? FormatEntryNumber(year, ++seq)));
         }
 
         _db.Set<FinancialLedgerEntry>().AddRange(entries);

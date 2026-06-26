@@ -41,6 +41,7 @@ public class PayrollRun : TenantEntity
 
     public ICollection<PayrollRunTransition> Transitions { get; set; } = new List<PayrollRunTransition>();
     public ICollection<PayrollPayslip> Payslips { get; set; } = new List<PayrollPayslip>();
+    public ICollection<PayrollRunItem> Items { get; set; } = new List<PayrollRunItem>();
 }
 
 /// <summary>An immutable record of one state change in a payroll run's lifecycle — who moved it, when,

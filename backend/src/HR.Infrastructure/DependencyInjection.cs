@@ -61,6 +61,23 @@ public static class DependencyInjection
         services.AddScoped<HR.Application.Engines.Finance.IPayrollPreviewEngine, HR.Infrastructure.Engines.Finance.PayrollPreviewEngine>();
         services.AddScoped<HR.Application.Engines.Finance.IPayrollRunEngine, HR.Infrastructure.Engines.Finance.PayrollRunEngine>();
 
+        // Domain events (in-process MediatR transport) + ambient background tenant context
+        services.AddSingleton<HR.Application.Common.Interfaces.IBackgroundExecutionContext, HR.Infrastructure.Services.BackgroundExecutionContext>();
+        services.AddScoped<HR.Application.Common.Interfaces.IDomainEventPublisher, HR.Infrastructure.Services.DomainEventPublisher>();
+        services.AddScoped<MediatR.INotificationHandler<HR.Application.Engines.Finance.Events.PayrollApprovedEvent>, HR.Infrastructure.Engines.Finance.PayrollEventLogHandler>();
+        services.AddScoped<MediatR.INotificationHandler<HR.Application.Engines.Finance.Events.PayrollExecutionStartedEvent>, HR.Infrastructure.Engines.Finance.PayrollEventLogHandler>();
+        services.AddScoped<MediatR.INotificationHandler<HR.Application.Engines.Finance.Events.PayrollCompletedEvent>, HR.Infrastructure.Engines.Finance.PayrollEventLogHandler>();
+        services.AddScoped<MediatR.INotificationHandler<HR.Application.Engines.Finance.Events.PayrollExecutionFailedEvent>, HR.Infrastructure.Engines.Finance.PayrollEventLogHandler>();
+
+        // Batch execution orchestrator (concurrent, resumable, idempotent) + in-process scheduler default.
+        // Set "Hangfire:Enabled"=true (and wire AddHangfire in the host) to offload to durable workers.
+        services.AddScoped<HR.Infrastructure.Engines.Finance.PayrollItemExecutor>();
+        services.AddScoped<HR.Application.Engines.Finance.IPayrollExecutionEngine, HR.Infrastructure.Engines.Finance.PayrollExecutionEngine>();
+        if (configuration.GetValue<bool>("Hangfire:Enabled"))
+            services.AddScoped<HR.Application.Engines.Finance.IPayrollExecutionScheduler, HR.Infrastructure.Engines.Finance.Scheduling.HangfirePayrollExecutionScheduler>();
+        else
+            services.AddScoped<HR.Application.Engines.Finance.IPayrollExecutionScheduler, HR.Infrastructure.Engines.Finance.Scheduling.InProcessPayrollExecutionScheduler>();
+
         // Payroll validation engine + validators (specification pattern; add a class to add a check)
         services.AddScoped<HR.Application.Engines.Finance.IPayrollValidationEngine, HR.Infrastructure.Engines.Finance.PayrollValidationEngine>();
         services.AddScoped<HR.Application.Engines.Finance.IPayrollValidator, HR.Infrastructure.Engines.Finance.Validators.NegativeSalaryValidator>();

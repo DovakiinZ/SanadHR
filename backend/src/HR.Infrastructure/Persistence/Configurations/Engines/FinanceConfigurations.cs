@@ -172,6 +172,25 @@ public class PayrollRunConfiguration : IEntityTypeConfiguration<PayrollRun>
             .WithOne(p => p.Run)
             .HasForeignKey(p => p.PayrollRunId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasMany(x => x.Items)
+            .WithOne(i => i.Run)
+            .HasForeignKey(i => i.PayrollRunId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class PayrollRunItemConfiguration : IEntityTypeConfiguration<PayrollRunItem>
+{
+    public void Configure(EntityTypeBuilder<PayrollRunItem> builder)
+    {
+        builder.ToTable("engine_payroll_run_items");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Error).HasMaxLength(2000);
+
+        builder.HasIndex(x => x.TenantId);
+        builder.HasIndex(x => new { x.PayrollRunId, x.EmployeeId }).IsUnique();
+        builder.HasIndex(x => new { x.PayrollRunId, x.State });
     }
 }
 

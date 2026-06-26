@@ -24,6 +24,8 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
+using Hangfire;
+using Hangfire.PostgreSql;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -79,6 +81,18 @@ builder.Services.AddPlatformModule();
 
 // Background: scan employee documents against notification rules and create expiry reminders.
 builder.Services.AddHostedService<HR.Api.Services.DocumentExpiryHostedService>();
+
+// Optional durable background execution for large payroll runs. Off by default — the in-process
+// scheduler (registered in AddInfrastructure) handles execution inline unless this is enabled.
+if (builder.Configuration.GetValue<bool>("Hangfire:Enabled"))
+{
+    builder.Services.AddHangfire(cfg => cfg
+        .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+        .UseSimpleAssemblyNameTypeSerializer()
+        .UseRecommendedSerializerSettings()
+        .UsePostgreSqlStorage(o => o.UseNpgsqlConnection(builder.Configuration.GetConnectionString("DefaultConnection"))));
+    builder.Services.AddHangfireServer();
+}
 
 // Controllers
 builder.Services.AddControllers()

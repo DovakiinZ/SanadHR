@@ -17,6 +17,11 @@ public record LedgerPostingRequest
     public Guid? ReferenceId { get; init; }
     public Guid? PayrollRunId { get; init; }
     public DateTime? PostedAt { get; init; }
+
+    /// <summary>Optional caller-supplied entry number. When set it is used verbatim (the caller guarantees
+    /// uniqueness — e.g. payroll execution derives a deterministic number per payslip/component so
+    /// concurrent workers never collide). When null the ledger auto-generates a sequential number.</summary>
+    public string? EntryNumber { get; init; }
 }
 
 /// <summary>Filter for querying the ledger.</summary>
