@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Loader2, Scale, CheckCircle2, XCircle, FileDown, Wallet } from "lucide-react";
+import { ArrowRight, Loader2, Scale, CheckCircle2, XCircle, FileDown, Wallet, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,7 @@ import {
   getPendingTerminations, decideTermination, fileUrl,
   ROLE_AR, STEP_STATUS_AR, SETTLEMENT_STATUS_AR, type TerminationDto,
 } from "@/lib/api/terminations";
+import { getPendingRestores, decideRestore, type RestoreDto } from "@/lib/api/restores";
 
 function notifyError(err: unknown, fallback: string) {
   if (!(err instanceof ApiError) || ![401, 403, 500].includes(err.status)) {
@@ -22,17 +23,33 @@ function money(n: number, c = "SAR") { return `${n.toLocaleString("ar-SA", { min
 
 export default function TerminationApprovalsPage() {
   const [items, setItems] = useState<TerminationDto[]>([]);
+  const [restores, setRestores] = useState<RestoreDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [justApproved, setJustApproved] = useState<TerminationDto | null>(null);
 
   const load = useCallback(async () => {
-    try { setItems(await getPendingTerminations()); } catch (err) { notifyError(err, "تعذر تحميل الطلبات"); }
+    try {
+      const [t, r] = await Promise.all([getPendingTerminations(), getPendingRestores()]);
+      setItems(t); setRestores(r);
+    } catch (err) { notifyError(err, "تعذر تحميل الطلبات"); }
   }, []);
 
   useEffect(() => {
-    (async () => { setLoading(true); try { setItems(await getPendingTerminations()); } catch (err) { notifyError(err, "تعذر التحميل"); } finally { setLoading(false); } })();
-  }, []);
+    (async () => { setLoading(true); try { await load(); } finally { setLoading(false); } })();
+  }, [load]);
+
+  async function decideRestoreReq(r: RestoreDto, approve: boolean) {
+    const comment = approve ? undefined : (prompt("سبب الرفض (اختياري)") ?? undefined);
+    setBusyId(r.id);
+    try {
+      const updated = await decideRestore(r.id, approve, comment);
+      if (approve && updated.status === "Approved") toast.success("تم اعتماد استرجاع الموظف — أُعيد تفعيله");
+      else if (approve) toast.success("تمت الموافقة على خطوتك");
+      else toast.success("تم رفض طلب الاسترجاع");
+      await load();
+    } catch (err) { notifyError(err, "تعذر تنفيذ القرار"); } finally { setBusyId(null); }
+  }
 
   async function decide(t: TerminationDto, approve: boolean) {
     const comment = approve ? undefined : (prompt("سبب الرفض (اختياري)") ?? undefined);
@@ -112,6 +129,54 @@ export default function TerminationApprovalsPage() {
                     </Button>
                     <Button onClick={() => decide(t, true)} disabled={busyId === t.id} className="gap-2 font-bold h-9">
                       {busyId === t.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} موافقة
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Restore (reinstatement) approvals */}
+      <div className="pt-2">
+        <h2 className="flex items-center gap-2 text-lg font-bold"><RotateCcw className="h-5 w-5 text-primary" /> اعتماد استرجاع الموظفين</h2>
+        <p className="text-sm text-muted-foreground mt-1">طلبات إعادة تفعيل موظفين منتهية خدمتهم (المدير → الموارد البشرية)</p>
+      </div>
+      {!loading && restores.length === 0 ? (
+        <div className="border border-dashed border-border p-8 text-center text-sm text-muted-foreground">لا توجد طلبات استرجاع بانتظار قرارك.</div>
+      ) : (
+        <div className="space-y-4">
+          {restores.map((r) => {
+            const current = r.steps.find((s) => s.order === r.currentStep);
+            return (
+              <div key={r.id} className="border border-border bg-card p-5">
+                <div className="flex items-start justify-between flex-wrap gap-3">
+                  <div>
+                    <div className="font-bold">{r.employeeName} <span className="text-sm text-muted-foreground" dir="ltr">({r.employeeNumber})</span></div>
+                    {r.reason && <div className="text-sm text-muted-foreground mt-0.5">السبب: {r.reason}</div>}
+                  </div>
+                  <Badge variant="outline" className="text-xs">{SETTLEMENT_STATUS_AR[r.status] ?? r.status}</Badge>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {r.steps.map((s) => (
+                    <span key={s.order} className={`inline-flex items-center gap-1 px-2 h-7 text-xs border ${
+                      s.status === "Approved" ? "bg-green-500/10 text-green-600 border-green-500/20"
+                      : s.status === "Rejected" ? "bg-destructive/10 text-destructive border-destructive/20"
+                      : s.order === r.currentStep ? "bg-amber-500/10 text-amber-600 border-amber-500/20"
+                      : "text-muted-foreground border-border"}`}>
+                      {ROLE_AR[s.role] ?? s.role}: {STEP_STATUS_AR[s.status] ?? s.status}
+                    </span>
+                  ))}
+                </div>
+                <div className="mt-4 flex items-center justify-between gap-2">
+                  <span className="text-xs text-muted-foreground">الخطوة الحالية: {current ? (ROLE_AR[current.role] ?? current.role) : "—"}</span>
+                  <div className="flex items-center gap-2">
+                    <Button onClick={() => decideRestoreReq(r, false)} disabled={busyId === r.id} variant="outline" className="gap-2 text-destructive border-destructive/30 hover:bg-destructive/10 h-9">
+                      <XCircle className="h-4 w-4" /> رفض
+                    </Button>
+                    <Button onClick={() => decideRestoreReq(r, true)} disabled={busyId === r.id} className="gap-2 font-bold h-9">
+                      {busyId === r.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} موافقة
                     </Button>
                   </div>
                 </div>

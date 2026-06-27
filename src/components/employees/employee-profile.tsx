@@ -4,8 +4,10 @@ import { type ElementType, type ReactNode, useEffect, useMemo, useState } from "
 import Link from "next/link";
 import {
   Banknote, Briefcase, Building, CalendarDays, ClipboardList, Download, FileText, GitBranch,
-  Pencil, Printer, Scale, Send, TrendingUp, Users, Wallet,
+  Loader2, Pencil, Printer, RotateCcw, Scale, Send, TrendingUp, Users, Wallet,
 } from "lucide-react";
+import { toast } from "sonner";
+import { requestRestore } from "@/lib/api/restores";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +38,22 @@ export function EmployeeProfile({ employee: e }: Props) {
   const canSeeComp = hasAny("Payroll.View", "Payroll.Edit", "Employees.Edit", "Employees.Create");
   const canEdit = hasAny("Employees.Edit");
   const canTerminate = hasAny("Employees.Terminate");
+  const isFormer = e.statusAr === "منتهي" || e.statusAr === "مستقيل";
+
+  const [restoring, setRestoring] = useState(false);
+  async function doRestore() {
+    if (restoring) return;
+    const reason = prompt("سبب استرجاع الموظف (اختياري)") ?? undefined;
+    setRestoring(true);
+    try {
+      await requestRestore(e.id, reason);
+      toast.success("تم تقديم طلب الاسترجاع للاعتماد (المدير → الموارد البشرية)");
+    } catch (err) {
+      toast.error((err as Error)?.message || "تعذر تقديم طلب الاسترجاع");
+    } finally {
+      setRestoring(false);
+    }
+  }
 
   const [balances, setBalances] = useState<LeaveTypeInfo[]>([]);
   const [requests, setRequests] = useState<RequestInstance[]>([]);
@@ -99,7 +117,7 @@ export function EmployeeProfile({ employee: e }: Props) {
           <div className="flex-1 space-y-2">
             <div className="flex flex-wrap items-center gap-3">
               <h1 className="text-2xl font-bold">{name}</h1>
-              <Badge variant="outline" className="border-green-500/20 bg-green-500/10 text-xs text-green-500">{e.statusAr}</Badge>
+              <Badge variant="outline" className={`text-xs ${isFormer ? "border-destructive/20 bg-destructive/10 text-destructive" : "border-green-500/20 bg-green-500/10 text-green-500"}`}>{e.statusAr}</Badge>
               <span className="font-mono text-xs text-muted-foreground">{e.employeeNumber}</span>
             </div>
             <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-muted-foreground">
@@ -111,7 +129,12 @@ export function EmployeeProfile({ employee: e }: Props) {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {canEdit && <Link href={`/employees/${e.id}/edit`} className="inline-flex h-9 items-center gap-2 border border-border px-3 text-sm hover:bg-muted"><Pencil className="h-4 w-4" /> تعديل</Link>}
-            {canTerminate && <Link href={`/employees/${e.id}/settlement`} className="inline-flex h-9 items-center gap-2 border border-border px-3 text-sm hover:bg-muted"><Scale className="h-4 w-4" /> نهاية الخدمة</Link>}
+            {canTerminate && !isFormer && <Link href={`/employees/${e.id}/settlement`} className="inline-flex h-9 items-center gap-2 border border-border px-3 text-sm hover:bg-muted"><Scale className="h-4 w-4" /> نهاية الخدمة</Link>}
+            {canTerminate && isFormer && (
+              <button onClick={doRestore} disabled={restoring} className="inline-flex h-9 items-center gap-2 border border-primary/40 bg-primary/5 px-3 text-sm text-primary hover:bg-primary/10 disabled:opacity-50">
+                {restoring ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />} استرجاع الموظف
+              </button>
+            )}
             <button onClick={() => window.print()} className="inline-flex h-9 items-center gap-2 border border-border px-3 text-sm hover:bg-muted"><Printer className="h-4 w-4" /> طباعة</button>
             <Link href="/requests" className="inline-flex h-9 items-center gap-2 bg-primary px-3 text-sm font-bold text-primary-foreground hover:bg-primary/80"><Send className="h-4 w-4" /> طلب</Link>
           </div>

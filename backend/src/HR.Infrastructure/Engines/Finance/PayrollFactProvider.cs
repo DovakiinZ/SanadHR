@@ -61,11 +61,20 @@ public sealed class PayrollFactProvider : IPayrollFactProvider
         var deps = await _db.Departments.AsNoTracking().Where(d => depIds.Contains(d.Id))
             .Select(d => new { d.Id, Name = d.NameAr ?? d.Name }).ToDictionaryAsync(d => d.Id, d => d.Name, ct);
 
-        // Attendance aggregates for the period.
+        // Attendance aggregates for the period. Shortage on Absent days is excluded here because the
+        // whole-day absence is already deducted at the daily-wage rate (avoids double-counting).
         var attendance = await _db.AttendanceRecords.AsNoTracking()
             .Where(a => empIds.Contains(a.EmployeeId) && a.Date >= period.Start && a.Date <= period.End)
             .GroupBy(a => a.EmployeeId)
-            .Select(g => new { EmployeeId = g.Key, Days = g.Count(), OvertimeMinutes = g.Sum(x => x.OvertimeMinutes) })
+            .Select(g => new
+            {
+                EmployeeId = g.Key,
+                Days = g.Count(),
+                OvertimeMinutes = g.Sum(x => x.OvertimeMinutes),
+                LateMinutes = g.Sum(x => x.LateMinutes),
+                AbsentDays = g.Count(x => x.Status == AttendanceStatus.Absent),
+                ShortageMinutes = g.Sum(x => x.Status == AttendanceStatus.Absent ? 0 : x.ShortageMinutes),
+            })
             .ToDictionaryAsync(x => x.EmployeeId, ct);
 
         var allowByEmp = allowances.GroupBy(a => a.EmployeeId).ToDictionary(g => g.Key, g => g.ToList());
@@ -93,6 +102,14 @@ public sealed class PayrollFactProvider : IPayrollFactProvider
             attendance.TryGetValue(e.Id, out var att);
             var hasAttendance = att is not null && att.Days > 0;
 
+            // Wage-rate basis for attendance deductions: full monthly wage / 30 days, / 8 hours.
+            var monthlyWage = e.BasicSalary + totalAllowances;
+            var dailyWage = Math.Round(monthlyWage / 30m, 4);
+            var hourlyWage = Math.Round(dailyWage / 8m, 4);
+            var absentDays = att?.AbsentDays ?? 0;
+            var lateHours = att is null ? 0m : Math.Round(att.LateMinutes / 60m, 2);
+            var shortageHours = att is null ? 0m : Math.Round(att.ShortageMinutes / 60m, 2);
+
             var facts = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
             {
                 ["BasicSalary"] = e.BasicSalary,
@@ -104,6 +121,12 @@ public sealed class PayrollFactProvider : IPayrollFactProvider
                 ["GosiRate"] = gosiRate,
                 ["WorkedDays"] = att?.Days ?? 0,
                 ["OvertimeHours"] = att is null ? 0m : Math.Round(att.OvertimeMinutes / 60m, 2),
+                // Attendance-driven deduction inputs (auto-computed from the attendance engine).
+                ["DailyWage"] = dailyWage,
+                ["HourlyWage"] = hourlyWage,
+                ["AbsentDays"] = absentDays,
+                ["LateHours"] = lateHours,
+                ["ShortageHours"] = shortageHours,
                 ["Department"] = e.DepartmentId.HasValue && deps.TryGetValue(e.DepartmentId.Value, out var dn) ? dn : "",
                 ["Currency"] = string.IsNullOrWhiteSpace(e.Currency) ? version.Currency : e.Currency,
             };

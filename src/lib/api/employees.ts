@@ -263,12 +263,13 @@ function toPayload(input: EmployeeInput) {
 }
 
 export async function getEmployees(params?: {
-  search?: string; pageNumber?: number; pageSize?: number;
+  search?: string; pageNumber?: number; pageSize?: number; includeTerminated?: boolean;
 }): Promise<Employee[]> {
   const q = new URLSearchParams();
   q.set("pageNumber", String(params?.pageNumber ?? 1));
   q.set("pageSize", String(params?.pageSize ?? 200));
   if (params?.search) q.set("search", params.search);
+  if (params?.includeTerminated) q.set("includeTerminated", "true");
   const result = await apiFetch<PaginatedResult<ApiEmployee>>(`/api/employees?${q.toString()}`);
   return (result?.items ?? []).map(toDisplayEmployee);
 }

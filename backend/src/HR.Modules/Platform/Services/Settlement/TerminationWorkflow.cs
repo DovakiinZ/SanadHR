@@ -1,6 +1,7 @@
 using HR.Application.Common.Exceptions;
 using HR.Application.Common.Interfaces;
 using HR.Application.Engines.Settlement;
+using HR.Domain.Engines.Documents;
 using HR.Domain.Engines.Expenses;
 using HR.Domain.Engines.Files;
 using HR.Domain.Enums;
@@ -179,6 +180,19 @@ public sealed class TerminationWorkflow : ITerminationWorkflow
         };
         _db.Files.Add(file);
         settlement.DocumentFileId = file.Id;
+
+        // Surface the settlement PDF in the employee's documents tab (مستندات الموظف).
+        _db.EmployeeDocuments.Add(new EmployeeDocument
+        {
+            EmployeeId = employee.Id,
+            Type = "Custom",
+            Title = "مخالصة نهاية الخدمة",
+            IssueDate = DateTime.UtcNow,
+            FileUrl = $"/api/files/{file.Id}",
+            FileName = file.FileName,
+            ContentType = file.ContentType,
+            SizeBytes = file.SizeBytes,
+        });
 
         settlement.Status = SettlementStatus.Approved;
         settlement.ApprovedAt = DateTime.UtcNow;

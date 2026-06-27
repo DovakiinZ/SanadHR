@@ -114,14 +114,51 @@ public class EndOfServiceEngine : IEndOfServiceEngine
 
     private static DateTime AsUtc(DateTime d) => DateTime.SpecifyKind(d, DateTimeKind.Utc);
 
-    /// <summary>Wage base = basic salary + active allowances. Matches the gross-salary basis used in
-    /// EmployeeProjection (the EOSB award is computed on the full wage, not just the basic).</summary>
+    /// <summary>Wage base = basic salary + active allowances, with each allowance capped at its
+    /// AllowanceType MaxAmount rule. This MUST match the salary basis shown on the employee profile
+    /// (EmployeeProjection), otherwise an un-capped allowance amount inflates the settlement (e.g. a
+    /// raw amount of 7,200,000 that the profile caps to a few thousand would produce a million-riyal
+    /// gratuity). The EOSB award is computed on the full capped wage, not just the basic.</summary>
     private async Task<decimal> ResolveMonthlyWageAsync(Employee employee, CancellationToken ct)
     {
         var allowances = await _db.EmployeeAllowances.AsNoTracking()
             .Where(a => a.EmployeeId == employee.Id && a.IsActive)
-            .SumAsync(a => (decimal?)a.Amount, ct) ?? 0m;
-        return employee.BasicSalary + allowances;
+            .Select(a => new { a.AllowanceTypeId, a.Amount })
+            .ToListAsync(ct);
+        if (allowances.Count == 0) return employee.BasicSalary;
+
+        // Per-allowance-type MaxAmount caps from master-data metadata (same rule the profile applies).
+        var typeIds = allowances.Select(a => a.AllowanceTypeId).Distinct().ToList();
+        var caps = (await _db.MasterDataItems.AsNoTracking()
+                .Where(m => typeIds.Contains(m.Id))
+                .Select(m => new { m.Id, m.MetadataJson }).ToListAsync(ct))
+            .ToDictionary(m => m.Id, m => MaxAmountFor(m.MetadataJson));
+
+        var total = employee.BasicSalary;
+        foreach (var a in allowances)
+        {
+            var amount = a.Amount;
+            if (caps.TryGetValue(a.AllowanceTypeId, out var max) && max is { } cap && cap > 0 && amount > cap)
+                amount = cap;
+            total += amount;
+        }
+        return total;
+    }
+
+    /// <summary>Reads the "maxAmount" cap from an AllowanceType's rules JSON (case-insensitive); null = uncapped.</summary>
+    private static decimal? MaxAmountFor(string? metadataJson)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(metadataJson);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) return null;
+            foreach (var p in doc.RootElement.EnumerateObject())
+                if (p.NameEquals("maxAmount") && p.Value.ValueKind == JsonValueKind.Number && p.Value.TryGetDecimal(out var mx))
+                    return mx;
+            return null;
+        }
+        catch { return null; }
     }
 
     /// <summary>Total days of unpaid (Paid=false) leave the employee took within the service window —
