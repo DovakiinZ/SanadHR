@@ -41,8 +41,8 @@ public class EndOfServiceEngine : IEndOfServiceEngine
         var settlement = new TerminationSettlement
         {
             EmployeeId = employee.Id,
-            HireDate = employee.HireDate,
-            TerminationDate = request.TerminationDate,
+            HireDate = input.HireDate,
+            TerminationDate = input.TerminationDate,
             Scenario = request.Scenario,
             ContractTermType = request.ContractTermType,
             MonthlyWage = result.MonthlyWage,
@@ -72,9 +72,9 @@ public class EndOfServiceEngine : IEndOfServiceEngine
             or TerminationScenario.Article81EmployerBreachResignation
             ? EmployeeStatus.Resigned
             : EmployeeStatus.Terminated;
-        employee.TerminationDate = request.TerminationDate;
+        employee.TerminationDate = input.TerminationDate;
         employee.ContractTermType = request.ContractTermType;
-        if (request.ContractEndDate is { } end) employee.ContractEndDate = end;
+        if (input.ContractEndDate is { } end) employee.ContractEndDate = end;
 
         await _audit.LogChange("Employee", employee.Id, "Terminated",
             new { employee.Status, employee.TerminationDate },
@@ -89,21 +89,30 @@ public class EndOfServiceEngine : IEndOfServiceEngine
         var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == request.EmployeeId, ct)
             ?? throw new KeyNotFoundException("Employee not found");
 
+        // Incoming dates arrive as Kind=Unspecified (JSON "yyyy-MM-dd"); PostgreSQL timestamptz columns
+        // require Kind=Utc, so normalize before any query/persist (matches the rest of the codebase).
+        var hireDate = AsUtc(employee.HireDate);
+        var terminationDate = AsUtc(request.TerminationDate);
+        var contractEnd = request.ContractEndDate is { } ce ? AsUtc(ce)
+            : employee.ContractEndDate is { } ece ? AsUtc(ece) : (DateTime?)null;
+
         var monthlyWage = await ResolveMonthlyWageAsync(employee, ct);
-        var unpaidDays = await SumUnpaidLeaveDaysAsync(employee.Id, employee.HireDate, request.TerminationDate, ct);
+        var unpaidDays = await SumUnpaidLeaveDaysAsync(employee.Id, hireDate, terminationDate, ct);
 
         var input = new SettlementInput
         {
             MonthlyWage = monthlyWage,
-            HireDate = employee.HireDate,
-            TerminationDate = request.TerminationDate,
+            HireDate = hireDate,
+            TerminationDate = terminationDate,
             ContractTermType = request.ContractTermType,
-            ContractEndDate = request.ContractEndDate ?? employee.ContractEndDate,
+            ContractEndDate = contractEnd,
             Scenario = request.Scenario,
             UnpaidLeaveDays = unpaidDays,
         };
         return (employee, input);
     }
+
+    private static DateTime AsUtc(DateTime d) => DateTime.SpecifyKind(d, DateTimeKind.Utc);
 
     /// <summary>Wage base = basic salary + active allowances. Matches the gross-salary basis used in
     /// EmployeeProjection (the EOSB award is computed on the full wage, not just the basic).</summary>
