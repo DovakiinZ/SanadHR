@@ -61,6 +61,7 @@ public static class DependencyInjection
         services.AddScoped<HR.Application.Engines.Finance.IFinancialLedger, HR.Infrastructure.Engines.Finance.FinancialLedger>();
         services.AddScoped<HR.Application.Engines.Finance.IRuleEngine, HR.Infrastructure.Engines.Finance.RuleEngine>();
         services.AddScoped<HR.Application.Engines.Finance.IPayrollFactProvider, HR.Infrastructure.Engines.Finance.PayrollFactProvider>();
+        services.AddScoped<HR.Application.Engines.Finance.IStandardPayrollSeeder, HR.Infrastructure.Engines.Finance.StandardPayrollSeeder>();
         services.AddScoped<HR.Infrastructure.Engines.Finance.PayrollComputation>();
         services.AddScoped<HR.Application.Engines.Finance.IPayrollPreviewEngine, HR.Infrastructure.Engines.Finance.PayrollPreviewEngine>();
         services.AddScoped<HR.Application.Engines.Finance.IPayrollRunEngine, HR.Infrastructure.Engines.Finance.PayrollRunEngine>();

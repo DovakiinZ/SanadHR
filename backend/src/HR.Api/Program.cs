@@ -103,7 +103,8 @@ builder.Services.AddControllers()
     .AddApplicationPart(typeof(HR.Modules.Settings.Controllers.SettingsController).Assembly)
     .AddApplicationPart(typeof(HR.Modules.Attendance.Controllers.AttendanceController).Assembly)
     .AddApplicationPart(typeof(HR.Modules.Platform.Controllers.MetadataController).Assembly)
-    .AddApplicationPart(typeof(HR.Modules.Workflows.Controllers.WorkflowDefinitionsController).Assembly);
+    .AddApplicationPart(typeof(HR.Modules.Workflows.Controllers.WorkflowDefinitionsController).Assembly)
+    .AddApplicationPart(typeof(HR.Modules.Payroll.Controllers.PayrollController).Assembly);
 
 // CORS
 builder.Services.AddCors(options =>
