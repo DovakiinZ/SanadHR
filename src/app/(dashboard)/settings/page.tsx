@@ -1,7 +1,13 @@
 import Link from "next/link";
-import { ChevronLeft, Database, Inbox, Wallet, CalendarDays, Landmark, FileText, LayoutTemplate, Bell, Clock } from "lucide-react";
+import { ChevronLeft, Database, Inbox, Wallet, CalendarDays, Landmark, FileText, LayoutTemplate, Bell, Clock, ShieldCheck } from "lucide-react";
 
 const categories = [
+  {
+    href: "/settings/access",
+    title: "المستخدمون والصلاحيات",
+    description: "حسابات المستخدمين وربطهم بالموظفين، الأدوار، قوالب الصلاحيات (مصفوفة)، وسجل تدقيق الوصول",
+    icon: ShieldCheck,
+  },
   {
     href: "/settings/document-templates",
     title: "قوالب المستندات",

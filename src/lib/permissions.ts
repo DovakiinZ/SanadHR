@@ -30,8 +30,18 @@ export function getPermissions(): string[] {
 
 export function usePermissions() {
   const [perms, setPerms] = useState<string[]>([]);
-  useEffect(() => { setPerms(getPermissions()); }, []);
+  const [ready, setReady] = useState(false);
+  // Read the token after mount (client-only). Deferred to a microtask so the effect body
+  // itself doesn't call setState synchronously.
+  useEffect(() => { queueMicrotask(() => { setPerms(getPermissions()); setReady(true); }); }, []);
   const has = (p: string) => perms.includes(p);
   const hasAny = (...ps: string[]) => ps.some((x) => perms.includes(x));
-  return { perms, has, hasAny, loaded: perms.length > 0 };
+  return { perms, has, hasAny, loaded: perms.length > 0, ready };
+}
+
+/// Convenience single-permission hook. `ready` flips true after the token is read
+/// (use it to avoid flashing "access denied" before permissions have loaded).
+export function usePermission(permission: string): { allowed: boolean; ready: boolean } {
+  const { has, ready } = usePermissions();
+  return { allowed: has(permission), ready };
 }
