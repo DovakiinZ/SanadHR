@@ -60,6 +60,7 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<EmployeeDeduction> EmployeeDeductions => Set<EmployeeDeduction>();
     public DbSet<TerminationSettlement> TerminationSettlements => Set<TerminationSettlement>();
     public DbSet<TerminationSettlementItem> TerminationSettlementItems => Set<TerminationSettlementItem>();
+    public DbSet<TerminationApprovalStep> TerminationApprovalSteps => Set<TerminationApprovalStep>();
 
     // Tasks
     public DbSet<HrTask> HrTasks => Set<HrTask>();

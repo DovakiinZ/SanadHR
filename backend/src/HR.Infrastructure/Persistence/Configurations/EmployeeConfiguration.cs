@@ -98,12 +98,30 @@ public class TerminationSettlementConfiguration : IEntityTypeConfiguration<Termi
         builder.Property(x => x.TotalAward).HasColumnType("decimal(18,2)");
         builder.Property(x => x.Currency).HasMaxLength(10);
         builder.Property(x => x.Notes).HasMaxLength(2000);
+        builder.Property(x => x.RejectionReason).HasMaxLength(1000);
         builder.HasIndex(x => x.TenantId);
         builder.HasIndex(x => new { x.TenantId, x.EmployeeId });
+        builder.HasIndex(x => new { x.TenantId, x.Status });
         builder.HasMany(x => x.Items)
             .WithOne()
             .HasForeignKey(i => i.TerminationSettlementId)
             .OnDelete(DeleteBehavior.Cascade);
+        builder.HasMany(x => x.ApprovalSteps)
+            .WithOne(s => s.Settlement)
+            .HasForeignKey(s => s.TerminationSettlementId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class TerminationApprovalStepConfiguration : IEntityTypeConfiguration<TerminationApprovalStep>
+{
+    public void Configure(EntityTypeBuilder<TerminationApprovalStep> builder)
+    {
+        builder.ToTable("employee_termination_approval_steps");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Comment).HasMaxLength(1000);
+        builder.HasIndex(x => x.TenantId);
+        builder.HasIndex(x => x.TerminationSettlementId);
     }
 }
 

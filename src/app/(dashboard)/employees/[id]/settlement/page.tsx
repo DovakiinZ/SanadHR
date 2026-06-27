@@ -10,10 +10,11 @@ import { usePermissions } from "@/lib/permissions";
 import { getEmployee } from "@/lib/api/employees";
 import type { Employee } from "@/types";
 import {
-  previewSettlement, terminateEmployee,
+  previewSettlement,
   SCENARIO_AR, SCENARIO_OPTIONS, CONTRACT_TERM_AR,
   type SettlementResult, type SettlementInput, type TerminationScenario, type ContractTermType,
 } from "@/lib/api/settlement";
+import { requestTermination } from "@/lib/api/terminations";
 
 const inputCls = "h-9 w-full rounded-lg border border-input bg-secondary px-3 text-sm outline-none focus-visible:border-ring";
 
@@ -36,7 +37,7 @@ export default function SettlementPage({ params }: { params: Promise<{ id: strin
   const [preview, setPreview] = useState<SettlementResult | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [done, setDone] = useState<SettlementResult | null>(null);
+  const [submitted, setSubmitted] = useState<{ id: string } | null>(null);
 
   useEffect(() => { getEmployee(id).then(setEmployee).catch(() => {}); }, [id]);
 
@@ -48,37 +49,46 @@ export default function SettlementPage({ params }: { params: Promise<{ id: strin
     notes: notes || null,
   }), [terminationDate, scenario, termType, contractEndDate, notes]);
 
-  // Live preview (debounced) whenever the inputs change.
+  // Live preview (debounced) whenever the inputs change. setState is done inside the timeout/promise
+  // callbacks (not synchronously in the effect body) to keep renders clean.
   useEffect(() => {
-    if (done) return; // already settled
-    if (!terminationDate) { setPreview(null); return; }
+    if (submitted) return; // already submitted for approval
     let active = true;
-    setPreviewing(true);
+    if (!terminationDate) { const c = setTimeout(() => active && setPreview(null), 0); return () => { active = false; clearTimeout(c); }; }
     const t = setTimeout(() => {
+      if (!active) return;
+      setPreviewing(true);
       previewSettlement(id, input)
         .then((r) => { if (active) setPreview(r); })
         .catch(() => { if (active) setPreview(null); })
         .finally(() => { if (active) setPreviewing(false); });
     }, 350);
     return () => { active = false; clearTimeout(t); };
-  }, [id, input, terminationDate, done]);
+  }, [id, input, terminationDate, submitted]);
 
   async function doTerminate() {
     if (!canTerminate) return;
-    if (!confirm("سيتم إنهاء خدمة الموظف وحفظ مخالصة نهاية الخدمة. متابعة؟")) return;
+    if (!confirm("سيتم تقديم طلب إنهاء الخدمة للاعتماد (المدير → الموارد البشرية → المالية). متابعة؟")) return;
     setSubmitting(true);
     try {
-      const r = await terminateEmployee(id, input);
-      setDone(r);
-      toast.success("تم إنهاء الخدمة وحفظ المخالصة");
+      const r = await requestTermination({
+        employeeId: id,
+        terminationDate,
+        scenario,
+        contractTermType: termType,
+        contractEndDate: termType === "FixedTerm" && contractEndDate ? contractEndDate : null,
+        notes: notes || null,
+      });
+      setSubmitted({ id: r.id });
+      toast.success("تم تقديم طلب إنهاء الخدمة للاعتماد");
     } catch (e) {
-      toast.error((e as Error)?.message || "تعذر إنهاء الخدمة");
+      toast.error((e as Error)?.message || "تعذر تقديم الطلب");
     } finally {
       setSubmitting(false);
     }
   }
 
-  const result = done ?? preview;
+  const result = preview;
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-6">
@@ -98,9 +108,10 @@ export default function SettlementPage({ params }: { params: Promise<{ id: strin
         </Link>
       </div>
 
-      {done && (
+      {submitted && (
         <div className="border border-primary/30 bg-primary/5 px-4 py-3 text-sm text-foreground">
-          تم حفظ المخالصة (رقم {done.settlementId?.slice(0, 8)}) وتحديث حالة الموظف.
+          تم تقديم طلب إنهاء الخدمة للاعتماد. سيمر عبر سلسلة الموافقات (المدير → الموارد البشرية → المالية)، وعند الاعتماد النهائي تُنشأ مخالصة مالية في المصروفات ويُولّد مستند المخالصة.{" "}
+          <Link href="/employees/terminations" className="font-medium text-primary hover:underline">عرض طلبات الإنهاء</Link>
         </div>
       )}
 
@@ -127,17 +138,17 @@ export default function SettlementPage({ params }: { params: Promise<{ id: strin
         </div>
         <div>
           <label className="mb-1 block text-xs text-muted-foreground">تاريخ انتهاء الخدمة</label>
-          <input type="date" value={terminationDate} onChange={(e) => setTerminationDate(e.target.value)} className={inputCls} disabled={!!done} />
+          <input type="date" value={terminationDate} onChange={(e) => setTerminationDate(e.target.value)} className={inputCls} disabled={!!submitted} />
         </div>
         {termType === "FixedTerm" && (
           <div>
             <label className="mb-1 block text-xs text-muted-foreground">تاريخ نهاية العقد (للمادة 77)</label>
-            <input type="date" value={contractEndDate} onChange={(e) => setContractEndDate(e.target.value)} className={inputCls} disabled={!!done} />
+            <input type="date" value={contractEndDate} onChange={(e) => setContractEndDate(e.target.value)} className={inputCls} disabled={!!submitted} />
           </div>
         )}
         <div className="sm:col-span-2">
           <label className="mb-1 block text-xs text-muted-foreground">ملاحظات</label>
-          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className="w-full rounded-lg border border-input bg-secondary px-3 py-2 text-sm outline-none focus-visible:border-ring" disabled={!!done} />
+          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className="w-full rounded-lg border border-input bg-secondary px-3 py-2 text-sm outline-none focus-visible:border-ring" disabled={!!submitted} />
         </div>
       </div>
 
@@ -145,7 +156,7 @@ export default function SettlementPage({ params }: { params: Promise<{ id: strin
       <div className="border border-border bg-card p-5">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="font-heading text-lg text-foreground">تفصيل المستحقات</h2>
-          {previewing && !done && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+          {previewing && !submitted && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
         </div>
 
         {!result ? (
@@ -186,11 +197,11 @@ export default function SettlementPage({ params }: { params: Promise<{ id: strin
       </div>
 
       {/* Action */}
-      {!done && (
+      {!submitted && (
         <div className="flex justify-end">
           <Button onClick={doTerminate} disabled={!canTerminate || submitting || !result} variant="destructive">
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Scale className="h-4 w-4" />}
-            إنهاء الخدمة وحفظ المخالصة
+            تقديم طلب إنهاء الخدمة للاعتماد
           </Button>
         </div>
       )}
