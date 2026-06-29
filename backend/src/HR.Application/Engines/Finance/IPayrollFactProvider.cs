@@ -9,6 +9,9 @@ namespace HR.Application.Engines.Finance;
 /// hardcoded calculations.</summary>
 public interface IPayrollFactProvider
 {
+    /// <param name="restrictToEmployeeIds">When non-null and non-empty, skips scope resolution and uses
+    /// this explicit set (frozen population from a payroll run). When null or empty, live scope is resolved.</param>
     Task<IReadOnlyList<EmployeePayrollInput>> BuildInputsAsync(
-        PayrollDefinitionVersion version, PayrollPeriod period, CancellationToken ct = default);
+        PayrollDefinitionVersion version, PayrollPeriod period,
+        IReadOnlyCollection<Guid>? restrictToEmployeeIds = null, CancellationToken ct = default);
 }

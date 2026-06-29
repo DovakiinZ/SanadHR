@@ -1,10 +1,11 @@
-using System.Text.Json;
 using HR.Application.Engines.Finance;
+using HR.Application.Engines.Scope;
 using HR.Domain.Engines.Finance;
 using HR.Domain.Engines.Finance.Entities;
 using HR.Domain.Enums;
 using HR.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace HR.Infrastructure.Engines.Finance;
 
@@ -15,23 +16,41 @@ namespace HR.Infrastructure.Engines.Finance;
 public sealed class PayrollFactProvider : IPayrollFactProvider
 {
     private readonly ApplicationDbContext _db;
+    private readonly IScopeEngine _scope;
 
-    public PayrollFactProvider(ApplicationDbContext db) => _db = db;
+    public PayrollFactProvider(ApplicationDbContext db, IScopeEngine scope) { _db = db; _scope = scope; }
+
+    /// <summary>Daily wage for the period under the configured proration basis.</summary>
+    public static decimal DailyWageFor(DayBasis basis, decimal monthlyWage, int year, int month, int workingDays)
+    {
+        var divisor = basis switch
+        {
+            DayBasis.Fixed30 => 30m,
+            DayBasis.CalendarMonth => DateTime.DaysInMonth(year, month),
+            DayBasis.WorkingDays => workingDays > 0 ? workingDays : 30m,
+            _ => 30m,
+        };
+        return Math.Round(monthlyWage / divisor, 4);
+    }
 
     public async Task<IReadOnlyList<EmployeePayrollInput>> BuildInputsAsync(
-        PayrollDefinitionVersion version, PayrollPeriod period, CancellationToken ct = default)
+        PayrollDefinitionVersion version, PayrollPeriod period,
+        IReadOnlyCollection<Guid>? restrictToEmployeeIds = null, CancellationToken ct = default)
     {
-        var filter = ParseFilter(version.EmployeeFilterJson);
+        HashSet<Guid> empIdSet;
+        if (restrictToEmployeeIds is { Count: > 0 })
+        {
+            empIdSet = restrictToEmployeeIds.ToHashSet();          // run: use the frozen population
+        }
+        else
+        {
+            var resolution = await _scope.ResolveAsync(
+                SelectionScopeJson.Parse(version.SelectionScopeJson), ct);
+            empIdSet = resolution.IncludedEmployeeIds.ToHashSet();  // preview: live resolution
+        }
+        if (empIdSet.Count == 0) return Array.Empty<EmployeePayrollInput>();
 
-        var query = _db.Employees.AsNoTracking().AsQueryable();
-        if (!filter.IncludeInactive)
-            query = query.Where(e => e.Status != EmployeeStatus.Terminated && e.Status != EmployeeStatus.Resigned);
-        if (filter.DepartmentIds.Count > 0)
-            query = query.Where(e => e.DepartmentId != null && filter.DepartmentIds.Contains(e.DepartmentId.Value));
-        if (filter.EmployeeIds.Count > 0)
-            query = query.Where(e => filter.EmployeeIds.Contains(e.Id));
-
-        var employees = await query.ToListAsync(ct);
+        var employees = await _db.Employees.AsNoTracking().Where(e => empIdSet.Contains(e.Id)).ToListAsync(ct);
         if (employees.Count == 0) return Array.Empty<EmployeePayrollInput>();
 
         var empIds = employees.Select(e => e.Id).ToList();
@@ -102,9 +121,10 @@ public sealed class PayrollFactProvider : IPayrollFactProvider
             attendance.TryGetValue(e.Id, out var att);
             var hasAttendance = att is not null && att.Days > 0;
 
-            // Wage-rate basis for attendance deductions: full monthly wage / 30 days, / 8 hours.
+            // Wage-rate basis for attendance deductions: full monthly wage prorated by DayBasis, / 8 hours.
             var monthlyWage = e.BasicSalary + totalAllowances;
-            var dailyWage = Math.Round(monthlyWage / 30m, 4);
+            var dailyWage = DailyWageFor(version.DayBasis, monthlyWage, period.Start.Year, period.Start.Month,
+                att?.Days ?? 0);
             var hourlyWage = Math.Round(dailyWage / 8m, 4);
             var absentDays = att?.AbsentDays ?? 0;
             var lateHours = att is null ? 0m : Math.Round(att.LateMinutes / 60m, 2);
@@ -143,35 +163,6 @@ public sealed class PayrollFactProvider : IPayrollFactProvider
         }
 
         return inputs;
-    }
-
-    private sealed record EmployeeFilter(IReadOnlyList<Guid> DepartmentIds, IReadOnlyList<Guid> EmployeeIds, bool IncludeInactive);
-
-    private static EmployeeFilter ParseFilter(string? json)
-    {
-        var deps = new List<Guid>();
-        var emps = new List<Guid>();
-        var includeInactive = false;
-        if (!string.IsNullOrWhiteSpace(json))
-        {
-            try
-            {
-                using var doc = JsonDocument.Parse(json);
-                var root = doc.RootElement;
-                if (root.ValueKind == JsonValueKind.Object)
-                {
-                    if (root.TryGetProperty("departmentIds", out var d) && d.ValueKind == JsonValueKind.Array)
-                        foreach (var el in d.EnumerateArray()) if (Guid.TryParse(el.GetString(), out var g)) deps.Add(g);
-                    if (root.TryGetProperty("employeeIds", out var ei) && ei.ValueKind == JsonValueKind.Array)
-                        foreach (var el in ei.EnumerateArray()) if (Guid.TryParse(el.GetString(), out var g)) emps.Add(g);
-                    if (root.TryGetProperty("includeInactive", out var inc) &&
-                        (inc.ValueKind == JsonValueKind.True || inc.ValueKind == JsonValueKind.False))
-                        includeInactive = inc.GetBoolean();
-                }
-            }
-            catch (JsonException) { /* malformed filter → treat as "all active" */ }
-        }
-        return new EmployeeFilter(deps, emps, includeInactive);
     }
 
     private static (decimal? Max, bool Gosi) ParseAllowanceRules(string? json)

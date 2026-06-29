@@ -59,6 +59,12 @@ public class PayrollDefinitionVersionConfiguration : IEntityTypeConfiguration<Pa
         builder.HasKey(x => x.Id);
         builder.Property(x => x.EmployeeFilterJson).HasColumnType("jsonb");
         builder.Property(x => x.CycleConfigJson).HasColumnType("jsonb");
+        builder.Property(x => x.SelectionScopeJson).HasColumnType("jsonb");
+        builder.Property(x => x.CalcSettingsJson).HasColumnType("jsonb");
+        builder.Property(x => x.PaymentMethodScopeJson).HasColumnType("jsonb");
+        builder.Property(x => x.CutoffDay).HasDefaultValue(27);
+        builder.Property(x => x.DayBasis).HasDefaultValue(HR.Domain.Enums.DayBasis.CalendarMonth);
+        builder.Property(x => x.CarryToNextPeriod).HasDefaultValue(true);
         builder.Property(x => x.Currency).HasMaxLength(3).IsRequired();
         builder.Property(x => x.Notes).HasMaxLength(2000);
 
@@ -226,5 +232,23 @@ public class PayrollRunTransitionConfiguration : IEntityTypeConfiguration<Payrol
 
         builder.HasIndex(x => x.TenantId);
         builder.HasIndex(x => x.PayrollRunId);
+    }
+}
+
+public class PayrollRunPopulationConfiguration : IEntityTypeConfiguration<PayrollRunPopulation>
+{
+    public void Configure(EntityTypeBuilder<PayrollRunPopulation> builder)
+    {
+        builder.ToTable("engine_payroll_run_population");
+        builder.HasKey(x => x.Id);
+        builder.HasIndex(x => new { x.TenantId, x.PayrollRunId });
+        builder.Property(x => x.EmployeeNumber).HasMaxLength(64);
+        builder.Property(x => x.EmployeeName).HasMaxLength(256);
+        builder.Property(x => x.ExclusionReasonCode).HasMaxLength(64);
+
+        builder.HasOne<PayrollRun>()
+            .WithMany()
+            .HasForeignKey(x => x.PayrollRunId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

@@ -38,6 +38,8 @@ public static class MasterDataObjectType
     public const string Skill = "Skill";
     public const string Bank = "Bank";
     public const string Nationality = "Nationality";
+    public const string PayrollTypeCategory = "PayrollTypeCategory";
+    public const string PayrollExportFormat = "PayrollExportFormat";
 
     /// <summary>All known canonical object types.</summary>
     public static readonly IReadOnlyList<string> All = new[]
@@ -46,7 +48,8 @@ public static class MasterDataObjectType
         EmploymentType, ContractType, LeaveType, AllowanceType, AdditionType, DeductionType,
         DocumentType, RequestType, RequestCategory, ShiftType, AttendancePolicy, PayrollGroup,
         PaymentMethod, LeavePolicy, WorkLocation, ExpenseCategory, LoanType, AssetType,
-        RecruitmentSource, CandidateStage, Tag, Skill, Bank, Nationality
+        RecruitmentSource, CandidateStage, Tag, Skill, Bank, Nationality,
+        PayrollTypeCategory, PayrollExportFormat
     };
 
     private static readonly HashSet<string> Known =

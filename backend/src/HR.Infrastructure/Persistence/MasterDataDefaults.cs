@@ -9,7 +9,8 @@ public record MasterDataDefault(
     string NameEn,
     string NameAr,
     string? Color = null,
-    string? Icon = null);
+    string? Icon = null,
+    string? MetadataJson = null);
 
 /// <summary>
 /// Curated starter set of system-default master data, seeded per tenant on first
@@ -193,6 +194,23 @@ public static class MasterDataDefaults
             ("G2", "Grade 2", "الدرجة 2"),
             ("G3", "Grade 3", "الدرجة 3"),
             ("G4", "Grade 4", "الدرجة 4"));
+
+        // Payroll type categories (extensible). MetadataJson carries default export format + payment scope.
+        list.Add(new MasterDataDefault(MasterDataObjectType.PayrollTypeCategory, "REGULAR",  "Regular Monthly",  "الرواتب الشهرية",      MetadataJson: "{\"defaultExportFormatCode\":\"PDF\"}"));
+        list.Add(new MasterDataDefault(MasterDataObjectType.PayrollTypeCategory, "MUDAD",    "Mudad Payroll",    "رواتب مدد",             MetadataJson: "{\"defaultExportFormatCode\":\"MUDAD\"}"));
+        list.Add(new MasterDataDefault(MasterDataObjectType.PayrollTypeCategory, "CASH",     "Cash Payroll",     "رواتب نقدية",           MetadataJson: "{\"defaultExportFormatCode\":\"CASH\"}"));
+        list.Add(new MasterDataDefault(MasterDataObjectType.PayrollTypeCategory, "BONUS",    "Bonus Payroll",    "مسير المكافآت",         MetadataJson: "{\"defaultExportFormatCode\":\"PDF\"}"));
+        list.Add(new MasterDataDefault(MasterDataObjectType.PayrollTypeCategory, "EOS",      "End of Service",   "مسير نهاية الخدمة",    MetadataJson: "{\"defaultExportFormatCode\":\"PDF\"}"));
+        list.Add(new MasterDataDefault(MasterDataObjectType.PayrollTypeCategory, "OFFCYCLE", "Off-cycle",        "مسير استثنائي",         MetadataJson: "{\"defaultExportFormatCode\":\"PDF\"}"));
+
+        // Export formats. MetadataJson.handlerKey maps to a code-registered exporter (sub-project 5).
+        list.Add(new MasterDataDefault(MasterDataObjectType.PayrollExportFormat, "PDF",   "PDF",           "PDF",         MetadataJson: "{\"handlerKey\":\"pdf\"}"));
+        list.Add(new MasterDataDefault(MasterDataObjectType.PayrollExportFormat, "EXCEL", "Excel",         "إكسل",        MetadataJson: "{\"handlerKey\":\"excel\"}"));
+        list.Add(new MasterDataDefault(MasterDataObjectType.PayrollExportFormat, "CSV",   "CSV",           "CSV",         MetadataJson: "{\"handlerKey\":\"csv\"}"));
+        list.Add(new MasterDataDefault(MasterDataObjectType.PayrollExportFormat, "TXT",   "Text",          "نص",          MetadataJson: "{\"handlerKey\":\"txt\"}"));
+        list.Add(new MasterDataDefault(MasterDataObjectType.PayrollExportFormat, "BANK",  "Bank Transfer", "تحويل بنكي",  MetadataJson: "{\"handlerKey\":\"bank\"}"));
+        list.Add(new MasterDataDefault(MasterDataObjectType.PayrollExportFormat, "MUDAD", "Mudad File",    "ملف مدد",     MetadataJson: "{\"handlerKey\":\"mudad\"}"));
+        list.Add(new MasterDataDefault(MasterDataObjectType.PayrollExportFormat, "CASH",  "Cash Sheet",    "كشف نقدي",    MetadataJson: "{\"handlerKey\":\"cash\"}"));
 
         return list;
     }

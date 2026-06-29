@@ -58,6 +58,9 @@ public static class DependencyInjection
         services.AddScoped<HR.Application.Engines.Permissions.IAccessTemplateSeeder, HR.Infrastructure.Engines.Permissions.AccessTemplateSeeder>();
 
         // Financial Calculation Engine
+        // Scope engine (pluggable dimension providers). Payroll depends only on IScopeEngine.
+        services.AddScoped<HR.Application.Engines.Scope.IScopeEngine, HR.Infrastructure.Engines.Scope.ScopeEngine>();
+        services.AddScoped<HR.Application.Engines.Finance.IPayrollTypeService, HR.Infrastructure.Engines.Finance.PayrollTypeService>();
         services.AddScoped<HR.Application.Engines.Finance.IFinancialLedger, HR.Infrastructure.Engines.Finance.FinancialLedger>();
         services.AddScoped<HR.Application.Engines.Finance.IRuleEngine, HR.Infrastructure.Engines.Finance.RuleEngine>();
         services.AddScoped<HR.Application.Engines.Finance.IPayrollFactProvider, HR.Infrastructure.Engines.Finance.PayrollFactProvider>();
