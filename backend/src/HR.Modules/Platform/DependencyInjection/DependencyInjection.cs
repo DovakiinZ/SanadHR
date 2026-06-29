@@ -38,6 +38,7 @@ public static class DependencyInjection
         services.AddScoped<IEndOfServiceEngine, EndOfServiceEngine>();
         services.AddScoped<ILeaveAccrualEngine, LeaveAccrualEngine>();
         services.AddScoped<HR.Application.Engines.Settlement.ITerminationWorkflow, HR.Modules.Platform.Services.Settlement.TerminationWorkflow>();
+        services.AddScoped<HR.Application.Engines.Settlement.IRestoreWorkflow, HR.Modules.Platform.Services.Settlement.RestoreWorkflow>();
 
         // Master Data Engine services
         services.AddScoped<ILookupService, LookupService>();

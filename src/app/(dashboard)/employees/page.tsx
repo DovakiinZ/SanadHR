@@ -17,12 +17,13 @@ export default function EmployeesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [includeTerminated, setIncludeTerminated] = useState(false);
 
   const fetchEmployees = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await getEmployees();
+      const data = await getEmployees({ includeTerminated });
       setEmployees(data);
     } catch (err) {
       const message = err instanceof ApiError ? err.message : "تعذر تحميل بيانات الموظفين";
@@ -34,7 +35,7 @@ export default function EmployeesPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [includeTerminated]);
 
   useEffect(() => {
     fetchEmployees();
@@ -49,6 +50,18 @@ export default function EmployeesPage() {
           <p className="text-sm text-muted-foreground mt-1">إدارة بيانات الموظفين</p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIncludeTerminated((v) => !v)}
+            className={`inline-flex items-center gap-2 h-10 px-3 border text-sm transition-colors ${
+              includeTerminated
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border bg-background text-muted-foreground hover:bg-muted"
+            }`}
+            title="إظهار الموظفين المنتهية خدمتهم في البحث"
+          >
+            <span className={`h-2 w-2 rounded-full ${includeTerminated ? "bg-primary" : "bg-muted-foreground/40"}`} />
+            الموظفون المنتهية خدمتهم
+          </button>
           <button
             onClick={fetchEmployees}
             disabled={loading}

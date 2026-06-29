@@ -18,8 +18,9 @@ import { requestTermination } from "@/lib/api/terminations";
 
 const inputCls = "h-9 w-full rounded-lg border border-input bg-secondary px-3 text-sm outline-none focus-visible:border-ring";
 
+// EOS payouts are presented as whole riyals — cleaner and matches how settlements are paid.
 function money(n: number, currency = "SAR"): string {
-  return `${n.toLocaleString("ar-SA", { maximumFractionDigits: 2, minimumFractionDigits: 2 })} ${currency}`;
+  return `${Math.round(n).toLocaleString("en-US")} ${currency}`;
 }
 
 export default function SettlementPage({ params }: { params: Promise<{ id: string }> }) {

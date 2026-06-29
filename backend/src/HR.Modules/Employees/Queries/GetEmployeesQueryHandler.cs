@@ -34,6 +34,18 @@ public class GetEmployeesQueryHandler : IRequestHandler<GetEmployeesQuery, Pagin
         if (request.BranchId.HasValue)
             query = query.Where(e => e.BranchId == request.BranchId);
 
+        // Explicit status filter wins; otherwise hide former employees unless the toggle is on.
+        if (!string.IsNullOrWhiteSpace(request.Status)
+            && Enum.TryParse<HR.Domain.Enums.EmployeeStatus>(request.Status, ignoreCase: true, out var status))
+        {
+            query = query.Where(e => e.Status == status);
+        }
+        else if (!request.IncludeTerminated)
+        {
+            query = query.Where(e => e.Status != HR.Domain.Enums.EmployeeStatus.Terminated
+                                     && e.Status != HR.Domain.Enums.EmployeeStatus.Resigned);
+        }
+
         var totalCount = await query.CountAsync(cancellationToken);
 
         var paged = query

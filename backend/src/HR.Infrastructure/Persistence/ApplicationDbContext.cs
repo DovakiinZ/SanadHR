@@ -61,6 +61,8 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<TerminationSettlement> TerminationSettlements => Set<TerminationSettlement>();
     public DbSet<TerminationSettlementItem> TerminationSettlementItems => Set<TerminationSettlementItem>();
     public DbSet<TerminationApprovalStep> TerminationApprovalSteps => Set<TerminationApprovalStep>();
+    public DbSet<EmployeeRestoreRequest> EmployeeRestoreRequests => Set<EmployeeRestoreRequest>();
+    public DbSet<RestoreApprovalStep> RestoreApprovalSteps => Set<RestoreApprovalStep>();
 
     // Tasks
     public DbSet<HrTask> HrTasks => Set<HrTask>();
