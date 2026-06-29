@@ -91,4 +91,38 @@ public class ScopeEngineTests
         Assert.Contains(dims, d => d.Key == "Department" && d.IsAvailable);
         Assert.Contains(dims, d => d.Key == "CostCenter" && !d.IsAvailable && d.UnavailableNote != null);
     }
+
+    [Fact]
+    public async Task Mode_All_explicit_include_ids_are_unioned_in()
+    {
+        // Base population: A, B. newId is not in the base.
+        var newId = Guid.NewGuid();
+        var e = Engine(new FakeBase(A, B));
+        var scope = new SelectionScope("All",
+            Array.Empty<ScopeCriterion>(),
+            Array.Empty<ScopeCriterion>(),
+            new[] { newId },          // IncludeEmployeeIds — should be added to result
+            Array.Empty<Guid>());
+        var r = await e.ResolveAsync(scope, default);
+        Assert.Contains(newId, r.IncludedEmployeeIds);
+        Assert.Contains(A, r.IncludedEmployeeIds);
+        Assert.Contains(B, r.IncludedEmployeeIds);
+    }
+
+    [Fact]
+    public async Task Mode_All_explicit_exclude_ids_are_removed()
+    {
+        // Base population: A, B, C. Exclude B via ExcludeEmployeeIds.
+        var e = Engine(new FakeBase(A, B, C));
+        var scope = new SelectionScope("All",
+            Array.Empty<ScopeCriterion>(),
+            Array.Empty<ScopeCriterion>(),
+            Array.Empty<Guid>(),
+            new[] { B });             // ExcludeEmployeeIds
+        var r = await e.ResolveAsync(scope, default);
+        Assert.DoesNotContain(B, r.IncludedEmployeeIds);
+        Assert.Contains(B, r.ExcludedByScope.Select(x => x.EmployeeId));
+        Assert.Contains(A, r.IncludedEmployeeIds);
+        Assert.Contains(C, r.IncludedEmployeeIds);
+    }
 }

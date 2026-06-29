@@ -43,7 +43,7 @@ public sealed class ScopeEngine : IScopeEngine
                 if (!_providers.TryGetValue(c.Dimension, out var provider))
                 { warnings.Add($"Dimension '{c.Dimension}' is not available and was skipped."); continue; }
                 var matched = await provider.ResolveEmployeesAsync(c.ValueIds, ct);
-                if (first) { set = matched; first = false; }
+                if (first) { set = new HashSet<Guid>(matched); first = false; }
                 else set.IntersectWith(matched);
             }
         }
