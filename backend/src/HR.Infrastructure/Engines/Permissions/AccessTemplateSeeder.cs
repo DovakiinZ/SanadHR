@@ -30,7 +30,7 @@ public sealed class AccessTemplateSeeder : IAccessTemplateSeeder
         }),
         new("Payroll Officer", "موظف الرواتب", "Prepares and runs payroll.", new[]
         {
-            "Payroll.View","Payroll.Create","Payroll.Edit","Payroll.Run","Payroll.Export",
+            "Payroll.View","Payroll.Create","Payroll.Edit","Payroll.Run","Payroll.Export","Payroll.Configure",
             "Employees.View","Expenses.View","Loans.View","Reports.View","Dashboards.View",
         }),
         new("Finance", "المالية", "Approves and locks payroll, manages expenses and loans.", new[]

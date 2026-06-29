@@ -4,8 +4,10 @@ using HR.Api.Filters;
 using HR.Application.Common.Exceptions;
 using HR.Application.Common.Models;
 using HR.Application.Engines.Finance;
+using HR.Application.Engines.Scope;
 using HR.Domain.Engines.Finance;
 using HR.Domain.Engines.Finance.Entities;
+using HR.Domain.Enums;
 using HR.Infrastructure.Persistence;
 using HR.Modules.Payroll.DTOs;
 using Microsoft.AspNetCore.Authorization;
@@ -29,15 +31,20 @@ public class PayrollController : BaseApiController
     private readonly IPayrollPreviewEngine _previewEngine;
     private readonly IPayrollExecutionScheduler _scheduler;
     private readonly IStandardPayrollSeeder _seeder;
+    private readonly IPayrollTypeService _types;
+    private readonly IScopeEngine _scope;
 
     public PayrollController(ApplicationDbContext db, IPayrollRunEngine runEngine, IPayrollPreviewEngine previewEngine,
-        IPayrollExecutionScheduler scheduler, IStandardPayrollSeeder seeder)
+        IPayrollExecutionScheduler scheduler, IStandardPayrollSeeder seeder,
+        IPayrollTypeService types, IScopeEngine scope)
     {
         _db = db;
         _runEngine = runEngine;
         _previewEngine = previewEngine;
         _scheduler = scheduler;
         _seeder = seeder;
+        _types = types;
+        _scope = scope;
     }
 
     [HttpPost("bootstrap")]
@@ -152,6 +159,144 @@ public class PayrollController : BaseApiController
     {
         await _runEngine.CancelAsync(id, string.IsNullOrWhiteSpace(req.Reason) ? "Cancelled" : req.Reason, ct);
         return OkResponse(await BuildDetail(id, ct));
+    }
+
+    // ---- payroll types ----
+
+    [HttpGet("types")]
+    [RequirePermission("Payroll.View")]
+    public async Task<ActionResult<ApiResponse<List<PayrollTypeListItem>>>> Types(CancellationToken ct)
+    {
+        var list = await _db.PayrollDefinitions.AsNoTracking().OrderBy(d => d.Name)
+            .Select(d => new PayrollTypeListItem
+            {
+                Id = d.Id, Code = d.Code, Name = d.Name, NameAr = d.NameAr, CategoryId = d.CategoryId,
+                Status = d.Status.ToString(), CurrentVersionId = d.CurrentVersionId,
+                VersionCount = d.Versions.Count,
+            }).ToListAsync(ct);
+        return OkResponse(list);
+    }
+
+    [HttpGet("types/{id:guid}")]
+    [RequirePermission("Payroll.View")]
+    public async Task<ActionResult<ApiResponse<PayrollTypeDetailDto>>> Type(Guid id, CancellationToken ct)
+    {
+        var d = await _db.PayrollDefinitions.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct)
+            ?? throw new NotFoundException("PayrollType", id);
+        var versions = await _db.PayrollDefinitionVersions.AsNoTracking()
+            .Where(v => v.PayrollDefinitionId == id).OrderBy(v => v.VersionNumber)
+            .Select(v => new PayrollVersionDto
+            {
+                Id = v.Id, VersionNumber = v.VersionNumber, Status = v.Status.ToString(),
+                CutoffDay = v.CutoffDay, DayBasis = v.DayBasis.ToString(), ClosingDate = v.ClosingDate,
+                PaymentDate = v.PaymentDate, CarryToNextPeriod = v.CarryToNextPeriod,
+                DefaultExportFormatId = v.DefaultExportFormatId, PaymentMethodId = v.PaymentMethodId,
+                ApprovalWorkflowId = v.ApprovalWorkflowId, RuleSetVersionId = v.RuleSetVersionId,
+                Currency = v.Currency, Frequency = v.Frequency.ToString(),
+                EffectiveFrom = v.EffectiveFrom, EffectiveTo = v.EffectiveTo,
+                SelectionScopeJson = v.SelectionScopeJson, CalcSettingsJson = v.CalcSettingsJson,
+                PaymentMethodScopeJson = v.PaymentMethodScopeJson,
+            }).ToListAsync(ct);
+        return OkResponse(new PayrollTypeDetailDto
+        {
+            Id = d.Id, Code = d.Code, Name = d.Name, NameAr = d.NameAr, CategoryId = d.CategoryId,
+            Status = d.Status.ToString(), CurrentVersionId = d.CurrentVersionId, Versions = versions,
+        });
+    }
+
+    [HttpPost("types")]
+    [RequirePermission("Payroll.Configure")]
+    public async Task<ActionResult<ApiResponse<Guid>>> CreateType([FromBody] CreateTypeRequest req, CancellationToken ct)
+        => CreatedResponse(await _types.CreateTypeAsync(new CreatePayrollTypeArgs(req.Code, req.Name, req.NameAr, req.CategoryId), ct));
+
+    [HttpPut("types/{id:guid}")]
+    [RequirePermission("Payroll.Configure")]
+    public async Task<ActionResult<ApiResponse<bool>>> UpdateHeader(Guid id, [FromBody] UpdateHeaderRequest req, CancellationToken ct)
+    {
+        var status = Enum.TryParse<PayrollDefinitionStatus>(req.Status, out var s) ? s : PayrollDefinitionStatus.Active;
+        await _types.UpdateHeaderAsync(id, req.Name, req.NameAr, req.CategoryId, status, ct);
+        return OkResponse(true);
+    }
+
+    [HttpPost("types/{id:guid}/versions")]
+    [RequirePermission("Payroll.Configure")]
+    public async Task<ActionResult<ApiResponse<Guid>>> CreateVersion(Guid id, CancellationToken ct)
+        => CreatedResponse(await _types.CreateDraftVersionAsync(id, ct));
+
+    [HttpPut("types/{id:guid}/versions/{vid:guid}")]
+    [RequirePermission("Payroll.Configure")]
+    public async Task<ActionResult<ApiResponse<bool>>> UpdateVersion(Guid id, Guid vid, [FromBody] UpdateVersionRequest req, CancellationToken ct)
+    {
+        await _types.UpdateDraftVersionAsync(id, vid, new UpdatePayrollVersionArgs
+        {
+            CutoffDay = req.CutoffDay,
+            DayBasis = Enum.TryParse<DayBasis>(req.DayBasis, out var b) ? b : null,
+            ClosingDate = req.ClosingDate, PaymentDate = req.PaymentDate, CarryToNextPeriod = req.CarryToNextPeriod,
+            DefaultExportFormatId = req.DefaultExportFormatId, PaymentMethodId = req.PaymentMethodId,
+            ApprovalWorkflowId = req.ApprovalWorkflowId, RuleSetVersionId = req.RuleSetVersionId,
+            Currency = req.Currency,
+            Frequency = Enum.TryParse<PayFrequency>(req.Frequency, out var f) ? f : null,
+            SelectionScopeJson = req.SelectionScopeJson, CalcSettingsJson = req.CalcSettingsJson,
+            PaymentMethodScopeJson = req.PaymentMethodScopeJson,
+        }, ct);
+        return OkResponse(true);
+    }
+
+    [HttpPost("types/{id:guid}/versions/{vid:guid}/clone")]
+    [RequirePermission("Payroll.Configure")]
+    public async Task<ActionResult<ApiResponse<Guid>>> CloneVersion(Guid id, Guid vid, CancellationToken ct)
+        => CreatedResponse(await _types.CloneVersionAsync(id, vid, ct));
+
+    [HttpPost("types/{id:guid}/versions/{vid:guid}/publish")]
+    [RequirePermission("Payroll.Configure")]
+    public async Task<ActionResult<ApiResponse<bool>>> PublishVersion(Guid id, Guid vid, CancellationToken ct)
+    {
+        await _types.PublishVersionAsync(id, vid, ct);
+        return OkResponse(true);
+    }
+
+    [HttpPost("types/{id:guid}/versions/{vid:guid}/simulate")]
+    [RequirePermission("Payroll.View")]
+    public async Task<ActionResult<ApiResponse<PayrollPreviewDto>>> Simulate(Guid id, Guid vid, [FromBody] SimulateRequest req, CancellationToken ct)
+    {
+        var preview = await _types.SimulateAsync(id, vid, req.Year, req.Month, ct);
+        return OkResponse(new PayrollPreviewDto
+        {
+            EmployeeCount = preview.EmployeeCount, GrossTotal = preview.GrossTotal,
+            DeductionTotal = preview.DeductionTotal, NetTotal = preview.NetTotal, Currency = preview.Currency,
+            IsValid = preview.Validation.IsValid,
+            Findings = preview.Validation.Findings.Select(ToFindingDto).ToList(),
+            Lines = preview.Lines.Select(l => new PayrollPreviewLineDto
+            {
+                EmployeeId = l.EmployeeId, EmployeeNumber = l.EmployeeNumber, EmployeeName = l.EmployeeName,
+                Gross = l.Gross, Deductions = l.Deductions, Net = l.Net, HasErrors = l.HasErrors,
+            }).ToList(),
+        });
+    }
+
+    // ---- scope ----
+
+    [HttpGet("scope/dimensions")]
+    [RequirePermission("Payroll.View")]
+    public ActionResult<ApiResponse<List<ScopeDimensionDto>>> ScopeDimensions()
+        => OkResponse(_scope.Dimensions().Select(d => new ScopeDimensionDto
+        {
+            Key = d.Key, NameEn = d.NameEn, NameAr = d.NameAr,
+            ValueSourceKind = d.ValueSource.Kind.ToString(), ValueSourceRef = d.ValueSource.Reference,
+            IsAvailable = d.IsAvailable, UnavailableNote = d.UnavailableNote,
+        }).ToList());
+
+    [HttpPost("scope/resolve")]
+    [RequirePermission("Payroll.View")]
+    public async Task<ActionResult<ApiResponse<ResolveScopeResult>>> ResolveScope([FromBody] ResolveScopeRequest req, CancellationToken ct)
+    {
+        var resolution = await _scope.ResolveAsync(SelectionScopeJson.Parse(req.ScopeJson), ct);
+        return OkResponse(new ResolveScopeResult
+        {
+            IncludedCount = resolution.IncludedEmployeeIds.Count,
+            ExcludedCount = resolution.ExcludedByScope.Count,
+            Warnings = resolution.Warnings.ToList(),
+        });
     }
 
     // ---- helpers ----

@@ -18,7 +18,7 @@ public static class SeedData
             ["Settings"] = new[] { "View", "Edit", "ManageUsers", "ManageRoles", "ManageTemplates", "ViewAudit" },
             ["Attendance"] = new[] { "View", "Create", "Edit", "Delete", "Export" },
             ["Leaves"] = new[] { "View", "Create", "Edit", "Delete", "Assign", "Cancel" },
-            ["Payroll"] = new[] { "View", "Create", "Edit", "Delete", "Approve", "Export", "Run", "Lock" },
+            ["Payroll"] = new[] { "View", "Create", "Edit", "Delete", "Approve", "Export", "Run", "Lock", "Configure" },
             ["Requests"] = new[] { "View", "Create", "Edit", "Approve", "Reject" },
             ["Expenses"] = new[] { "View", "Create", "Edit", "Delete", "Approve" },
             ["Loans"] = new[] { "View", "Create", "Edit", "Delete", "Approve" },
