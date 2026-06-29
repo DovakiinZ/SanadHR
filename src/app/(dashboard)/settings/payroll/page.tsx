@@ -1,7 +1,13 @@
 import Link from "next/link";
-import { ArrowRight, Wallet, Coins, CreditCard, Users, ChevronLeft } from "lucide-react";
+import { ArrowRight, Wallet, Coins, CreditCard, Users, ChevronLeft, LayoutList } from "lucide-react";
 
 const modules = [
+  {
+    href: "/settings/payroll/types",
+    title: "أنواع المسير",
+    description: "Payroll Types — عرّف أنواع المسيرات (شهري، مكافآت، نهاية خدمة…) وإصداراتها ونطاق الموظفين",
+    icon: LayoutList,
+  },
   {
     href: "/settings/payroll/allowances",
     title: "البدلات",
