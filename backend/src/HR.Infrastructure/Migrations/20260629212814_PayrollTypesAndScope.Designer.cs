@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace HR.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20260629212131_PayrollTypesAndScope")]
+    [Migration("20260629212814_PayrollTypesAndScope")]
     partial class PayrollTypesAndScope
     {
         /// <inheritdoc />
@@ -3448,6 +3448,8 @@ namespace HR.Infrastructure.Migrations
                         .HasColumnType("text");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("PayrollRunId");
 
                     b.HasIndex("TenantId", "PayrollRunId");
 
@@ -10142,6 +10144,15 @@ namespace HR.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Run");
+                });
+
+            modelBuilder.Entity("HR.Domain.Engines.Finance.Entities.PayrollRunPopulation", b =>
+                {
+                    b.HasOne("HR.Domain.Engines.Finance.Entities.PayrollRun", null)
+                        .WithMany()
+                        .HasForeignKey("PayrollRunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("HR.Domain.Engines.Finance.Entities.PayrollRunTransition", b =>

@@ -3007,6 +3007,7 @@ namespace HR.Infrastructure.Migrations
                         .HasColumnType("jsonb");
 
                     b.Property<bool>("CarryToNextPeriod")
+                        .HasDefaultValue(true)
                         .HasColumnType("boolean");
 
                     b.Property<DateTime?>("ClosingDate")
@@ -3024,12 +3025,14 @@ namespace HR.Infrastructure.Migrations
                         .HasColumnType("character varying(3)");
 
                     b.Property<int>("CutoffDay")
+                        .HasDefaultValue(27)
                         .HasColumnType("integer");
 
                     b.Property<string>("CycleConfigJson")
                         .HasColumnType("jsonb");
 
                     b.Property<int>("DayBasis")
+                        .HasDefaultValue(1)
                         .HasColumnType("integer");
 
                     b.Property<Guid?>("DefaultExportFormatId")
@@ -3445,6 +3448,8 @@ namespace HR.Infrastructure.Migrations
                         .HasColumnType("text");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("PayrollRunId");
 
                     b.HasIndex("TenantId", "PayrollRunId");
 
@@ -10139,6 +10144,15 @@ namespace HR.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Run");
+                });
+
+            modelBuilder.Entity("HR.Domain.Engines.Finance.Entities.PayrollRunPopulation", b =>
+                {
+                    b.HasOne("HR.Domain.Engines.Finance.Entities.PayrollRun", null)
+                        .WithMany()
+                        .HasForeignKey("PayrollRunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("HR.Domain.Engines.Finance.Entities.PayrollRunTransition", b =>

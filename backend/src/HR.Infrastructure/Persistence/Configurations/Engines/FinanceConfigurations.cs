@@ -242,5 +242,10 @@ public class PayrollRunPopulationConfiguration : IEntityTypeConfiguration<Payrol
         builder.Property(x => x.EmployeeNumber).HasMaxLength(64);
         builder.Property(x => x.EmployeeName).HasMaxLength(256);
         builder.Property(x => x.ExclusionReasonCode).HasMaxLength(64);
+
+        builder.HasOne<PayrollRun>()
+            .WithMany()
+            .HasForeignKey(x => x.PayrollRunId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }
