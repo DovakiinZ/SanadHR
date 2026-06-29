@@ -62,6 +62,9 @@ public class PayrollDefinitionVersionConfiguration : IEntityTypeConfiguration<Pa
         builder.Property(x => x.SelectionScopeJson).HasColumnType("jsonb");
         builder.Property(x => x.CalcSettingsJson).HasColumnType("jsonb");
         builder.Property(x => x.PaymentMethodScopeJson).HasColumnType("jsonb");
+        builder.Property(x => x.CutoffDay).HasDefaultValue(27);
+        builder.Property(x => x.DayBasis).HasDefaultValue(HR.Domain.Enums.DayBasis.CalendarMonth);
+        builder.Property(x => x.CarryToNextPeriod).HasDefaultValue(true);
         builder.Property(x => x.Currency).HasMaxLength(3).IsRequired();
         builder.Property(x => x.Notes).HasMaxLength(2000);
 

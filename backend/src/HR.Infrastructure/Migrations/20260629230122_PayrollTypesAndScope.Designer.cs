@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace HR.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20260629212814_PayrollTypesAndScope")]
+    [Migration("20260629230122_PayrollTypesAndScope")]
     partial class PayrollTypesAndScope
     {
         /// <inheritdoc />
@@ -3010,7 +3010,9 @@ namespace HR.Infrastructure.Migrations
                         .HasColumnType("jsonb");
 
                     b.Property<bool>("CarryToNextPeriod")
-                        .HasColumnType("boolean");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
 
                     b.Property<DateTime?>("ClosingDate")
                         .HasColumnType("timestamp with time zone");
@@ -3027,13 +3029,17 @@ namespace HR.Infrastructure.Migrations
                         .HasColumnType("character varying(3)");
 
                     b.Property<int>("CutoffDay")
-                        .HasColumnType("integer");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(27);
 
                     b.Property<string>("CycleConfigJson")
                         .HasColumnType("jsonb");
 
                     b.Property<int>("DayBasis")
-                        .HasColumnType("integer");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1);
 
                     b.Property<Guid?>("DefaultExportFormatId")
                         .HasColumnType("uuid");
@@ -8762,6 +8768,13 @@ namespace HR.Infrastructure.Migrations
                             Description = "Lock permission for Payroll",
                             Module = "Payroll",
                             Name = "Lock"
+                        },
+                        new
+                        {
+                            Id = new Guid("143f32fa-5cdb-aa94-0014-37fb0090bbe6"),
+                            Description = "Configure permission for Payroll",
+                            Module = "Payroll",
+                            Name = "Configure"
                         },
                         new
                         {
