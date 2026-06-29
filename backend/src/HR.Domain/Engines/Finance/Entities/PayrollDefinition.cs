@@ -18,6 +18,9 @@ public class PayrollDefinition : TenantEntity
     public PayrollScope Scope { get; set; } = PayrollScope.Company;
     public PayrollDefinitionStatus Status { get; set; } = PayrollDefinitionStatus.Draft;
 
+    /// <summary>Master-data PayrollTypeCategory item id (Regular / Mudad / Cash / Bonus / EOS / Off-cycle).</summary>
+    public Guid? CategoryId { get; set; }
+
     /// <summary>The currently published version used when launching new runs.</summary>
     public Guid? CurrentVersionId { get; set; }
 
@@ -42,6 +45,24 @@ public class PayrollDefinitionVersion : TenantEntity
 
     /// <summary>Cycle configuration (JSON): period anchor, cutoff day, pay day, proration policy, etc.</summary>
     public string? CycleConfigJson { get; set; }
+
+    // --- Payroll Type configuration (sub-project 1). Typed columns for hot/queryable fields. ---
+    public int CutoffDay { get; set; } = 27;
+    public DayBasis DayBasis { get; set; } = DayBasis.CalendarMonth;
+    public DateTime? ClosingDate { get; set; }
+    public DateTime? PaymentDate { get; set; }
+    public bool CarryToNextPeriod { get; set; } = true;
+    public Guid? DefaultExportFormatId { get; set; }
+    public DateTime? EffectiveFrom { get; set; }
+    public DateTime? EffectiveTo { get; set; }
+    public bool IsSimulation { get; set; }
+
+    /// <summary>Rich employee selection (include/exclude across registered scope dimensions).</summary>
+    public string? SelectionScopeJson { get; set; }
+    /// <summary>Calculation toggles (include/exclude allowances/additions/etc.). DayBasis is the typed column.</summary>
+    public string? CalcSettingsJson { get; set; }
+    /// <summary>Allowed master-data PaymentMethod ids for this type.</summary>
+    public string? PaymentMethodScopeJson { get; set; }
 
     public Guid? PaymentMethodId { get; set; }
     public Guid? WorkingCalendarId { get; set; }

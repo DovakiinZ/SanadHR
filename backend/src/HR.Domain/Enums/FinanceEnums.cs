@@ -122,3 +122,11 @@ public enum PayrollRunItemState
     Failed = 4,
     Skipped = 5,
 }
+
+/// <summary>How a month's daily wage is prorated.</summary>
+public enum DayBasis
+{
+    CalendarMonth = 1, // basic / actual days in the month
+    Fixed30 = 2,       // basic / 30
+    WorkingDays = 3,   // basic / working days in the month
+}
