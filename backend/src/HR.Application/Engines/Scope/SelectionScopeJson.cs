@@ -23,8 +23,8 @@ public static class SelectionScopeJson
                 mode,
                 ReadCriteria(root, "include"),
                 ReadCriteria(root, "exclude"),
-                ReadGuids(root, "includeEmployeeIds"),
-                ReadGuids(root, "excludeEmployeeIds"));
+                ReadGuidArray(root, "includeEmployeeIds"),
+                ReadGuidArray(root, "excludeEmployeeIds"));
         }
         catch (JsonException) { return SelectionScope.All(); }
     }
@@ -45,21 +45,21 @@ public static class SelectionScopeJson
             foreach (var el in arr.EnumerateArray())
             {
                 if (el.ValueKind != JsonValueKind.Object) continue;
-                var dim = el.TryGetProperty("dimension", out var d) ? d.GetString() : null;
+                var dim = el.TryGetProperty("dimension", out var d) && d.ValueKind == JsonValueKind.String
+                    ? d.GetString() : null;
                 if (string.IsNullOrWhiteSpace(dim)) continue;
                 list.Add(new ScopeCriterion(dim!, ReadGuidArray(el, "valueIds")));
             }
         return list;
     }
 
-    private static List<Guid> ReadGuids(JsonElement root, string prop) => ReadGuidArray(root, prop);
-
     private static List<Guid> ReadGuidArray(JsonElement obj, string prop)
     {
         var ids = new List<Guid>();
         if (obj.TryGetProperty(prop, out var arr) && arr.ValueKind == JsonValueKind.Array)
             foreach (var el in arr.EnumerateArray())
-                if (Guid.TryParse(el.GetString(), out var g)) ids.Add(g);
+                if (el.ValueKind == JsonValueKind.String && Guid.TryParse(el.GetString(), out var g))
+                    ids.Add(g);
         return ids;
     }
 }
