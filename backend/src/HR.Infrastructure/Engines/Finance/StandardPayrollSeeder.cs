@@ -1,6 +1,7 @@
 using HR.Application.Engines.Finance;
 using HR.Domain.Engines.Finance.Entities;
 using HR.Domain.Engines.Finance.Expressions;
+using HR.Domain.Engines.MasterData;
 using HR.Domain.Enums;
 using HR.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -75,12 +76,25 @@ public sealed class StandardPayrollSeeder : IStandardPayrollSeeder
             return definition.Id;
         }
 
+        // Look up master-data ids for PayrollTypeCategory(REGULAR) and PayrollExportFormat(PDF).
+        // These rows are seeded by the master-data default seeder. If that hasn't run yet for this
+        // tenant the lookups return null — the FKs are nullable, so seeding still succeeds; the
+        // fields will be null until the next bootstrap re-run or a user sets them via the UI.
+        var categoryId = await _db.MasterDataItems
+            .Where(m => m.ObjectType == MasterDataObjectType.PayrollTypeCategory && m.Code == "REGULAR")
+            .Select(m => (Guid?)m.Id).FirstOrDefaultAsync(ct);
+        var pdfFormatId = await _db.MasterDataItems
+            .Where(m => m.ObjectType == MasterDataObjectType.PayrollExportFormat && m.Code == "PDF")
+            .Select(m => (Guid?)m.Id).FirstOrDefaultAsync(ct);
+
         // Definition + published version pinned to the rule set.
         if (definition is null)
         {
             definition = new PayrollDefinition { Code = DefinitionCode, Name = "Monthly Payroll", NameAr = "الرواتب الشهرية", Scope = PayrollScope.Company, Status = PayrollDefinitionStatus.Active };
             _db.PayrollDefinitions.Add(definition);
         }
+        definition.CategoryId ??= categoryId;
+
         var defVersion = new PayrollDefinitionVersion
         {
             PayrollDefinitionId = definition.Id,
@@ -90,6 +104,11 @@ public sealed class StandardPayrollSeeder : IStandardPayrollSeeder
             RuleSetVersionId = ruleSetVersionId,
             Currency = "SAR",
             PublishedAt = DateTime.UtcNow,
+            CutoffDay = 27,
+            DayBasis = DayBasis.CalendarMonth,
+            CarryToNextPeriod = true,
+            DefaultExportFormatId = pdfFormatId,
+            SelectionScopeJson = "{\"mode\":\"All\",\"include\":[],\"exclude\":[],\"includeEmployeeIds\":[],\"excludeEmployeeIds\":[]}",
         };
         _db.PayrollDefinitionVersions.Add(defVersion);
         definition.CurrentVersionId = defVersion.Id;
