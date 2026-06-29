@@ -1,6 +1,7 @@
 using System.Text.Json;
 using HR.Application.Common.Interfaces;
 using HR.Application.Engines.Finance;
+using HR.Application.Engines.Scope;
 using HR.Domain.Engines.Finance;
 using HR.Domain.Engines.Finance.Entities;
 using HR.Domain.Engines.Finance.StateMachine;
@@ -23,19 +24,22 @@ public sealed class PayrollRunEngine : IPayrollRunEngine
     private readonly IPayrollValidationEngine _validation;
     private readonly ICurrentUserService _currentUser;
     private readonly IAuditLogService _audit;
+    private readonly IScopeEngine _scope;
 
     public PayrollRunEngine(
         ApplicationDbContext db,
         PayrollComputation computation,
         IPayrollValidationEngine validation,
         ICurrentUserService currentUser,
-        IAuditLogService audit)
+        IAuditLogService audit,
+        IScopeEngine scope)
     {
         _db = db;
         _computation = computation;
         _validation = validation;
         _currentUser = currentUser;
         _audit = audit;
+        _scope = scope;
     }
 
     private Guid? Actor => _currentUser.IsAuthenticated ? _currentUser.UserId : null;
@@ -63,6 +67,34 @@ public sealed class PayrollRunEngine : IPayrollRunEngine
         };
         _db.PayrollRuns.Add(run);
         await _db.SaveChangesAsync(ct);
+
+        // Freeze the resolved population so future org changes never alter this run.
+        var resolution = await _scope.ResolveAsync(
+            SelectionScopeJson.Parse(version.SelectionScopeJson), ct);
+        var included = resolution.IncludedEmployeeIds.ToHashSet();
+        var snapshotEmployees = await _db.Employees.AsNoTracking()
+            .Where(e => included.Contains(e.Id))
+            .Select(e => new { e.Id, e.EmployeeNumber, e.FirstName, e.FirstNameAr, e.LastName, e.LastNameAr,
+                               e.DepartmentId, e.BranchId, e.JobTitleId, e.PaymentMethodId })
+            .ToListAsync(ct);
+        foreach (var e in snapshotEmployees)
+            _db.PayrollRunPopulations.Add(new PayrollRunPopulation
+            {
+                PayrollRunId = run.Id, EmployeeId = e.Id,
+                EmployeeNumber = e.EmployeeNumber,
+                EmployeeName = $"{e.FirstNameAr ?? e.FirstName} {e.LastNameAr ?? e.LastName}".Trim(),
+                DepartmentId = e.DepartmentId, BranchId = e.BranchId, JobTitleId = e.JobTitleId,
+                PaymentMethodId = e.PaymentMethodId, IsIncluded = true,
+            });
+        foreach (var ex in resolution.ExcludedByScope)
+            _db.PayrollRunPopulations.Add(new PayrollRunPopulation
+            {
+                PayrollRunId = run.Id, EmployeeId = ex.EmployeeId,
+                IsIncluded = false, ExclusionReasonCode = "ExcludedByScope",
+            });
+        run.EmployeeCount = included.Count;
+        await _db.SaveChangesAsync(ct);
+
         await _audit.LogAsync("PayrollRunCreated", nameof(PayrollRun), run.Id,
             null, new { run.RunNumber, run.PayrollDefinitionId, run.PeriodStart, run.PeriodEnd }, ct);
         return run;
@@ -78,7 +110,11 @@ public sealed class PayrollRunEngine : IPayrollRunEngine
             ?? throw new InvalidOperationException("Payroll definition version not found.");
         var period = new PayrollPeriod(run.PeriodStart, run.PeriodEnd);
 
-        var computation = await _computation.ComputeAsync(version, period, ct);
+        // Load the frozen included employee ids — historical runs are never affected by org changes.
+        var frozen = await _db.PayrollRunPopulations.AsNoTracking()
+            .Where(p => p.PayrollRunId == run.Id && p.IsIncluded)
+            .Select(p => p.EmployeeId).ToListAsync(ct);
+        var computation = await _computation.ComputeAsync(version, period, frozen, ct);
 
         // Re-snapshot: drop any prior payslips, write fresh immutable snapshots.
         var existing = await _db.PayrollPayslips.Where(p => p.PayrollRunId == run.Id).ToListAsync(ct);
@@ -127,7 +163,11 @@ public sealed class PayrollRunEngine : IPayrollRunEngine
             ?? throw new InvalidOperationException("Payroll definition version not found.");
         var period = new PayrollPeriod(run.PeriodStart, run.PeriodEnd);
 
-        var computation = await _computation.ComputeAsync(version, period, ct);
+        // Load the frozen included employee ids — validation must run over the same population as calculate.
+        var frozen = await _db.PayrollRunPopulations.AsNoTracking()
+            .Where(p => p.PayrollRunId == run.Id && p.IsIncluded)
+            .Select(p => p.EmployeeId).ToListAsync(ct);
+        var computation = await _computation.ComputeAsync(version, period, frozen, ct);
         var overlapping = await _computation.OverlappingRunsAsync(version.PayrollDefinitionId, period, run.Id, ct);
 
         var report = _validation.Validate(new PayrollValidationContext

@@ -30,9 +30,10 @@ public sealed class PayrollComputation
     }
 
     public async Task<PayrollComputationResult> ComputeAsync(
-        PayrollDefinitionVersion version, PayrollPeriod period, CancellationToken ct)
+        PayrollDefinitionVersion version, PayrollPeriod period,
+        IReadOnlyCollection<Guid>? restrictToEmployeeIds = null, CancellationToken ct = default)
     {
-        var inputs = await _facts.BuildInputsAsync(version, period, ct);
+        var inputs = await _facts.BuildInputsAsync(version, period, restrictToEmployeeIds, ct);
 
         RuleCompilationResult compilation;
         IRuleSetEvaluator? evaluator = null;

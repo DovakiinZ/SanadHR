@@ -26,7 +26,7 @@ public sealed class PayrollPreviewEngine : IPayrollPreviewEngine
             .FirstOrDefaultAsync(v => v.Id == payrollDefinitionVersionId, ct)
             ?? throw new InvalidOperationException($"Payroll definition version {payrollDefinitionVersionId} not found.");
 
-        var computation = await _computation.ComputeAsync(version, period, ct);
+        var computation = await _computation.ComputeAsync(version, period, null, ct);
         var overlapping = await _computation.OverlappingRunsAsync(version.PayrollDefinitionId, period, null, ct);
 
         var context = new PayrollValidationContext
