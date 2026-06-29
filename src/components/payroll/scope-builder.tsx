@@ -24,7 +24,7 @@ import { getMasterDataItems, type MasterDataItem } from "@/lib/api/master-data";
 
 // ── EmployeeStatus GUID mapping ─────────────────────────────────────────────
 // These GUIDs MUST match the backend StatusScopeProvider.StatusId formula:
-// Guid.Parse($"00000000-0000-0000-0000-{((int)status):D12}")
+// Guid.Parse($"00000000-0000-0000-0000-{((int)status):D2}")  — (int) zero-padded to 2 digits
 const EMPLOYEE_STATUS_OPTIONS: { id: string; label: string; labelAr: string }[] = [
   { id: "00000000-0000-0000-0000-000000000001", label: "Active",     labelAr: "نشط" },
   { id: "00000000-0000-0000-0000-000000000002", label: "On Leave",   labelAr: "في إجازة" },
@@ -97,6 +97,7 @@ function DimensionRow({
   onRemove,
   fetchedOptions,
   fetchOptions,
+  disabled,
 }: {
   dimensions: ScopeDimension[];
   entry: ScopeEntry;
@@ -104,12 +105,14 @@ function DimensionRow({
   onRemove: () => void;
   fetchedOptions: Record<string, Opt[]>;
   fetchOptions: (dim: ScopeDimension) => void;
+  disabled?: boolean;
 }) {
   const dim = dimensions.find((d) => d.key === entry.dimension);
   const staticOpts = dim ? dimensionOptions(dim) : null;
   const opts: Opt[] = staticOpts ?? fetchedOptions[entry.dimension] ?? [];
 
   function handleDimChange(key: string) {
+    if (disabled) return;
     const newDim = dimensions.find((d) => d.key === key);
     onChange({ dimension: key, valueIds: [] });
     if (newDim && !staticOpts && !fetchedOptions[key]) fetchOptions(newDim);
@@ -125,12 +128,13 @@ function DimensionRow({
   const selectClass = "h-8 bg-secondary border border-border px-2 text-sm text-foreground rounded-none";
 
   return (
-    <div className="flex items-start gap-2 p-2 bg-secondary/40 border border-border">
+    <div className={`flex items-start gap-2 p-2 bg-secondary/40 border border-border ${disabled ? "opacity-60" : ""}`}>
       {/* Dimension picker */}
       <select
         value={entry.dimension}
         onChange={(e) => handleDimChange(e.target.value)}
-        className={`${selectClass} min-w-[150px]`}
+        disabled={disabled}
+        className={`${selectClass} min-w-[150px] disabled:cursor-not-allowed`}
       >
         <option value="">— اختر بُعداً —</option>
         {dimensions.map((d) => (
@@ -154,13 +158,15 @@ function DimensionRow({
               <button
                 key={o.id}
                 type="button"
+                disabled={disabled}
                 onClick={() => {
+                  if (disabled) return;
                   const ids = sel ? entry.valueIds.filter((x) => x !== o.id) : [...entry.valueIds, o.id];
                   onChange({ ...entry, valueIds: ids });
                 }}
                 className={`text-xs px-2 py-0.5 border transition-colors ${
                   sel ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:border-primary/50"
-                }`}
+                } disabled:cursor-not-allowed`}
               >
                 {o.label}
               </button>
@@ -169,7 +175,12 @@ function DimensionRow({
         </div>
       )}
 
-      <button type="button" onClick={onRemove} className="h-8 w-8 shrink-0 inline-flex items-center justify-center text-muted-foreground hover:text-destructive">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={disabled ? undefined : onRemove}
+        className="h-8 w-8 shrink-0 inline-flex items-center justify-center text-muted-foreground hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50"
+      >
         <X className="h-4 w-4" />
       </button>
     </div>
@@ -184,6 +195,7 @@ function ScopeSection({
   onChange,
   fetchedOptions,
   fetchOptions,
+  disabled,
 }: {
   label: string;
   entries: ScopeEntry[];
@@ -191,8 +203,10 @@ function ScopeSection({
   onChange: (entries: ScopeEntry[]) => void;
   fetchedOptions: Record<string, Opt[]>;
   fetchOptions: (dim: ScopeDimension) => void;
+  disabled?: boolean;
 }) {
   function addRow() {
+    if (disabled) return;
     onChange([...entries, { dimension: "", valueIds: [] }]);
   }
   function updateRow(i: number, e: ScopeEntry) {
@@ -208,7 +222,14 @@ function ScopeSection({
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{label}</span>
-        <Button type="button" variant="outline" size="sm" onClick={addRow} className="h-7 text-xs">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={addRow}
+          disabled={disabled}
+          className="h-7 text-xs disabled:opacity-60 disabled:cursor-not-allowed"
+        >
           + إضافة شرط
         </Button>
       </div>
@@ -225,6 +246,7 @@ function ScopeSection({
             onRemove={() => removeRow(i)}
             fetchedOptions={fetchedOptions}
             fetchOptions={fetchOptions}
+            disabled={disabled}
           />
         ))}
       </div>
@@ -236,9 +258,11 @@ function ScopeSection({
 export function ScopeBuilder({
   value,
   onChange,
+  disabled = false,
 }: {
   value: string | null;
   onChange: (json: string) => void;
+  disabled?: boolean;
 }) {
   const scope = parseScope(value);
   const [dimensions, setDimensions] = useState<ScopeDimension[]>([]);
@@ -313,18 +337,20 @@ export function ScopeBuilder({
       {/* Mode toggle */}
       <div className="flex items-center gap-2">
         <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">نطاق التطبيق</span>
-        <div className="flex border border-border">
+        <div className={`flex border border-border ${disabled ? "opacity-60" : ""}`}>
           <button
             type="button"
-            onClick={() => setMode("All")}
-            className={`px-4 py-1.5 text-sm transition-colors ${scope.mode === "All" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            disabled={disabled}
+            onClick={() => { if (!disabled) setMode("All"); }}
+            className={`px-4 py-1.5 text-sm transition-colors disabled:cursor-not-allowed ${scope.mode === "All" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
           >
             جميع الموظفين
           </button>
           <button
             type="button"
-            onClick={() => setMode("Criteria")}
-            className={`px-4 py-1.5 text-sm border-r border-border transition-colors ${scope.mode === "Criteria" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            disabled={disabled}
+            onClick={() => { if (!disabled) setMode("Criteria"); }}
+            className={`px-4 py-1.5 text-sm border-r border-border transition-colors disabled:cursor-not-allowed ${scope.mode === "Criteria" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
           >
             معايير محددة
           </button>
@@ -341,6 +367,7 @@ export function ScopeBuilder({
             onChange={setInclude}
             fetchedOptions={fetchedOptions}
             fetchOptions={fetchOptions}
+            disabled={disabled}
           />
           <div className="border-t border-border" />
           <ScopeSection
@@ -350,6 +377,7 @@ export function ScopeBuilder({
             onChange={setExclude}
             fetchedOptions={fetchedOptions}
             fetchOptions={fetchOptions}
+            disabled={disabled}
           />
         </div>
       )}

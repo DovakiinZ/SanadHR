@@ -219,8 +219,17 @@ function Inner() {
     setVRuleSetVersionId(v.ruleSetVersionId ?? "");
     setVScopeJson(v.selectionScopeJson);
     setVDayBasis(v.dayBasis ?? "CalendarMonth");
-    setVCalcSettings(parseCalcSettings(v.calcSettingsJson));
-    setVExcludedAllowances([]);
+    // Restore calcSettings toggles AND excludedAllowanceTypeIds from the same JSON blob
+    const parsedCalc = (() => {
+      if (!v.calcSettingsJson) return { settings: DEFAULT_CALC, excluded: [] as string[] };
+      try {
+        const obj = JSON.parse(v.calcSettingsJson) as Partial<CalcSettings> & { excludedAllowanceTypeIds?: string[] };
+        const { excludedAllowanceTypeIds = [], ...rest } = obj;
+        return { settings: { ...DEFAULT_CALC, ...rest } as CalcSettings, excluded: excludedAllowanceTypeIds };
+      } catch { return { settings: DEFAULT_CALC, excluded: [] as string[] }; }
+    })();
+    setVCalcSettings(parsedCalc.settings);
+    setVExcludedAllowances(parsedCalc.excluded);
     setVCutoffDay(v.cutoffDay ?? 25);
     setVClosingDate(v.closingDate?.slice(0, 10) ?? "");
     setVPaymentDate(v.paymentDate?.slice(0, 10) ?? "");
@@ -264,7 +273,7 @@ function Inner() {
         ruleSetVersionId: vRuleSetVersionId || null,
         selectionScopeJson: vScopeJson,
         dayBasis: vDayBasis,
-        calcSettingsJson: JSON.stringify(vCalcSettings),
+        calcSettingsJson: JSON.stringify({ ...vCalcSettings, excludedAllowanceTypeIds: vExcludedAllowances }),
         cutoffDay: vCutoffDay,
         closingDate: vClosingDate || null,
         paymentDate: vPaymentDate || null,
@@ -286,11 +295,10 @@ function Inner() {
     try {
       const newVid = await payrollTypesApi.cloneVersion(id, vid);
       toast.success("تم نسخ الإصدار");
-      await load();
-      // After reload select the new version
-      if (newVid && detail) {
-        const d = await payrollTypesApi.get(id);
-        setDetail(d);
+      // Single fetch: load detail, then select the new draft version
+      const d = await payrollTypesApi.get(id);
+      setDetail(d);
+      if (newVid) {
         selectVersion(newVid, d.versions);
       }
     } catch (err) {
@@ -647,6 +655,7 @@ function Inner() {
               {activeTab === "scope" && (
                 <ScopeBuilder
                   value={vScopeJson}
+                  disabled={!isDraft || !canConfigure}
                   onChange={(json) => {
                     if (isDraft && canConfigure) setVScopeJson(json);
                   }}
