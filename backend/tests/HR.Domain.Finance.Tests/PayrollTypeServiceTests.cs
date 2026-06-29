@@ -91,4 +91,30 @@ public class PayrollTypeServiceTests
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             svc.UpdateDraftVersionAsync(typeId, v1.Id, new UpdatePayrollVersionArgs { CutoffDay = 25 }, default));
     }
+
+    [Fact]
+    public async Task Clone_carries_WorkingCalendarId_EmployeeFilterJson_CycleConfigJson()
+    {
+        var name = $"db-{Guid.NewGuid()}";
+        var calId = Guid.NewGuid();
+        await using var db = Ctx(name);
+        var svc = Svc(db);
+        var typeId = await svc.CreateTypeAsync(new CreatePayrollTypeArgs("M", "M", "م", null), default);
+        var v1 = await db.PayrollDefinitionVersions.FirstAsync(v => v.PayrollDefinitionId == typeId);
+        // Set the three fields that CloneVersionAsync was previously omitting
+        v1.WorkingCalendarId = calId;
+        v1.EmployeeFilterJson = "{\"dept\":\"IT\"}";
+        v1.CycleConfigJson = "{\"anchor\":\"last\"}";
+        v1.SelectionScopeJson = "{\"scope\":\"all\"}";
+        await db.SaveChangesAsync();
+
+        var v2Id = await svc.CloneVersionAsync(typeId, v1.Id, default);
+        var v2 = await db.PayrollDefinitionVersions.FirstAsync(v => v.Id == v2Id);
+
+        Assert.Equal(calId, v2.WorkingCalendarId);
+        Assert.Equal("{\"dept\":\"IT\"}", v2.EmployeeFilterJson);
+        Assert.Equal("{\"anchor\":\"last\"}", v2.CycleConfigJson);
+        Assert.Equal("{\"scope\":\"all\"}", v2.SelectionScopeJson);
+        Assert.Equal(VersionStatus.Draft, v2.Status);
+    }
 }

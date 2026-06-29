@@ -99,6 +99,8 @@ public sealed class PayrollTypeService : IPayrollTypeService
             PaymentMethodId = src.PaymentMethodId, ApprovalWorkflowId = src.ApprovalWorkflowId,
             RuleSetVersionId = src.RuleSetVersionId, SelectionScopeJson = src.SelectionScopeJson,
             CalcSettingsJson = src.CalcSettingsJson, PaymentMethodScopeJson = src.PaymentMethodScopeJson,
+            WorkingCalendarId = src.WorkingCalendarId, EmployeeFilterJson = src.EmployeeFilterJson,
+            CycleConfigJson = src.CycleConfigJson,
         };
         _db.PayrollDefinitionVersions.Add(copy);
         await _db.SaveChangesAsync(ct);
@@ -109,8 +111,8 @@ public sealed class PayrollTypeService : IPayrollTypeService
     {
         var def = await Def(typeId, ct);
         var v = await Version(typeId, versionId, ct);
-        if (v.Status == VersionStatus.Superseded)
-            throw new InvalidOperationException("A superseded version cannot be published.");
+        if (v.Status == VersionStatus.Superseded || v.Status == VersionStatus.Published)
+            throw new InvalidOperationException("Only a Draft version can be published.");
 
         var now = DateTime.UtcNow;
         if (def.CurrentVersionId is { } currentId && currentId != versionId)
