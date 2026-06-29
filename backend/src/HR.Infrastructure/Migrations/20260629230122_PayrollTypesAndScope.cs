@@ -158,12 +158,12 @@ SET ""SelectionScopeJson"" = jsonb_build_object(
         'exclude', '[]'::jsonb,
         'includeEmployeeIds', COALESCE(""EmployeeFilterJson""::jsonb -> 'employeeIds', '[]'::jsonb),
         'excludeEmployeeIds', '[]'::jsonb
-    )::text
+    )
 WHERE ""SelectionScopeJson"" IS NULL;");
 
             migrationBuilder.Sql(@"
 UPDATE engine_payroll_definition_versions
-SET ""SelectionScopeJson"" = jsonb_set(""SelectionScopeJson""::jsonb, '{mode}', '""All""')::text
+SET ""SelectionScopeJson"" = jsonb_set(""SelectionScopeJson"", '{mode}', '""All""')
 WHERE (""SelectionScopeJson""::jsonb -> 'include') = '[]'::jsonb
   AND (""SelectionScopeJson""::jsonb -> 'includeEmployeeIds') = '[]'::jsonb;");
         }
