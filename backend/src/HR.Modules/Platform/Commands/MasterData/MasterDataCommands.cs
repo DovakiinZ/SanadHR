@@ -296,6 +296,7 @@ public class SeedDefaultMasterDataCommandHandler : IRequestHandler<SeedDefaultMa
                 NameAr = def.NameAr,
                 Color = def.Color,
                 Icon = def.Icon,
+                MetadataJson = def.MetadataJson,
                 SortOrder = sort,
                 IsSystemDefault = true,
                 IsActive = true
