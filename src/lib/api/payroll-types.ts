@@ -1,4 +1,5 @@
 import { apiFetch } from "../api-client";
+import type { PayrollPreviewDto } from "./payroll";
 
 export type ScopeDimension = {
   key: string;
@@ -63,7 +64,7 @@ export const payrollTypesApi = {
   publishVersion: (id: string, vid: string) =>
     apiFetch<boolean>(`/api/payroll/types/${id}/versions/${vid}/publish`, { method: "POST", body: {} }),
   simulate: (id: string, vid: string, year: number, month: number) =>
-    apiFetch(`/api/payroll/types/${id}/versions/${vid}/simulate`, {
+    apiFetch<PayrollPreviewDto>(`/api/payroll/types/${id}/versions/${vid}/simulate`, {
       method: "POST",
       body: { year, month },
     }),
