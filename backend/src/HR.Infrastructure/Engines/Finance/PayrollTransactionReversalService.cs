@@ -1,5 +1,4 @@
 using HR.Application.Common.Exceptions;
-using HR.Application.Common.Interfaces;
 using HR.Application.Engines.Finance;
 using HR.Domain.Engines.Finance.Entities;
 using HR.Domain.Engines.Finance.StateMachine;
@@ -13,13 +12,11 @@ public sealed class PayrollTransactionReversalService : IPayrollTransactionRever
 {
     private readonly ApplicationDbContext _db;
     private readonly IFinancialLedger _ledger;
-    private readonly ICurrentUserService _user;
 
-    public PayrollTransactionReversalService(ApplicationDbContext db, IFinancialLedger ledger, ICurrentUserService user)
+    public PayrollTransactionReversalService(ApplicationDbContext db, IFinancialLedger ledger)
     {
         _db = db;
         _ledger = ledger;
-        _user = user;
     }
 
     private static DateTime AsUtc(DateTime d) => d.Kind == DateTimeKind.Utc ? d : DateTime.SpecifyKind(d, DateTimeKind.Utc);
@@ -38,9 +35,10 @@ public sealed class PayrollTransactionReversalService : IPayrollTransactionRever
         if (txn.LedgerEntryId is not { } ledgerEntryId)
             throw new DomainException("This transaction has no ledger entry to reverse.");
 
+        var previousStatus = txn.Status;
         var counter = await _ledger.ReverseAsync(ledgerEntryId, reason, ct);
 
-        PayrollTransactionStateMachine.EnsureCanTransition(txn.Status, PayrollTransactionStatus.Reversed);
+        PayrollTransactionStateMachine.EnsureCanTransition(previousStatus, PayrollTransactionStatus.Reversed);
         txn.Status = PayrollTransactionStatus.Reversed;
         txn.ReversalReason = reason;
 

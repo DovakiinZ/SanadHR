@@ -57,7 +57,7 @@ public class PayrollTransactionReversalServiceTests
         await db.SaveChangesAsync();
 
         var ledger = new FakeLedger();
-        var sut = new PayrollTransactionReversalService(db, ledger, new FakeUser());
+        var sut = new PayrollTransactionReversalService(db, ledger);
 
         var result = await sut.ReverseAsync(txn.Id, "duplicate entry", createCorrection: false, correctedAmount: null, default);
 
@@ -76,7 +76,7 @@ public class PayrollTransactionReversalServiceTests
         db.PayrollTransactions.Add(txn);
         await db.SaveChangesAsync();
 
-        var sut = new PayrollTransactionReversalService(db, new FakeLedger(), new FakeUser());
+        var sut = new PayrollTransactionReversalService(db, new FakeLedger());
 
         var result = await sut.ReverseAsync(txn.Id, "wrong amount", createCorrection: true, correctedAmount: 80m, default);
 
@@ -99,7 +99,7 @@ public class PayrollTransactionReversalServiceTests
         db.PayrollTransactions.Add(txn);
         await db.SaveChangesAsync();
 
-        var sut = new PayrollTransactionReversalService(db, new FakeLedger(), new FakeUser());
+        var sut = new PayrollTransactionReversalService(db, new FakeLedger());
 
         var act = async () => await sut.ReverseAsync(txn.Id, "x", false, null, default);
         await act.Should().ThrowAsync<DomainException>();
