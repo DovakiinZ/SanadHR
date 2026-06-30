@@ -181,4 +181,41 @@ public class PayrollTransactionServiceTests
             PayrollTransactionKind.Addition, null, null, null, null, null, null, null), default);
         none.Should().BeEmpty();
     }
+
+    // Postgres 'timestamp with time zone' rejects DateTime with Kind != Utc. Dates arriving from JSON
+    // ("2026-07-05") deserialize as Kind=Unspecified, so the service must normalize them to UTC before save.
+    [Fact]
+    public async Task Create_normalizes_supplied_dates_to_utc()
+    {
+        await using var db = Ctx($"t-{Guid.NewGuid()}");
+        var (empId, typeId) = await SeedAsync(db, MasterDataObjectType.DeductionType);
+        var unspecified = new DateTime(2026, 7, 5, 0, 0, 0, DateTimeKind.Unspecified);
+        var args = new CreatePayrollTransactionArgs(PayrollTransactionKind.Deduction, empId, typeId, 100m,
+            unspecified, unspecified, true, unspecified, "t", null, false);
+
+        var id = await Svc(db).CreateAsync(args, default);
+
+        var row = await db.PayrollTransactions.SingleAsync(x => x.Id == id);
+        row.EffectiveDate.Kind.Should().Be(DateTimeKind.Utc);
+        row.TransactionDate.Kind.Should().Be(DateTimeKind.Utc);
+        row.RecurrenceEndDate!.Value.Kind.Should().Be(DateTimeKind.Utc);
+    }
+
+    [Fact]
+    public async Task Update_normalizes_supplied_dates_to_utc()
+    {
+        await using var db = Ctx($"t-{Guid.NewGuid()}");
+        var (empId, typeId) = await SeedAsync(db, MasterDataObjectType.DeductionType);
+        var svc = Svc(db);
+        var id = await svc.CreateAsync(DeductionArgs(empId, typeId), default);
+        var unspecified = new DateTime(2026, 8, 9, 0, 0, 0, DateTimeKind.Unspecified);
+
+        await svc.UpdateAsync(id, new UpdatePayrollTransactionArgs(typeId, 120m,
+            unspecified, unspecified, true, unspecified, null, null), default);
+
+        var row = await db.PayrollTransactions.SingleAsync(x => x.Id == id);
+        row.EffectiveDate.Kind.Should().Be(DateTimeKind.Utc);
+        row.TransactionDate.Kind.Should().Be(DateTimeKind.Utc);
+        row.RecurrenceEndDate!.Value.Kind.Should().Be(DateTimeKind.Utc);
+    }
 }

@@ -20,13 +20,20 @@ public sealed class PayrollTransactionService : IPayrollTransactionService
         _user = user;
     }
 
+    // Postgres 'timestamp with time zone' columns only accept UTC DateTimes. Dates supplied from the API
+    // deserialize as Kind=Unspecified, so normalize before persisting (mirrors EndOfServiceEngine.AsUtc).
+    private static DateTime AsUtc(DateTime d) =>
+        d.Kind == DateTimeKind.Utc ? d : DateTime.SpecifyKind(d, DateTimeKind.Utc);
+
+    private static DateTime? AsUtc(DateTime? d) => d is { } v ? AsUtc(v) : null;
+
     public async Task<Guid> CreateAsync(CreatePayrollTransactionArgs args, CancellationToken ct)
     {
         if (args.Amount < 0) throw new InvalidOperationException("Amount must be non-negative.");
         await EnsureEmployeeAsync(args.EmployeeId, ct);
         await EnsureTypeMatchesKindAsync(args.TypeId, args.Kind, ct);
 
-        var effective = args.EffectiveDate;
+        var effective = AsUtc(args.EffectiveDate);
         var txn = new PayrollTransaction
         {
             Kind = args.Kind,
@@ -34,11 +41,11 @@ public sealed class PayrollTransactionService : IPayrollTransactionService
             TypeId = args.TypeId,
             Amount = args.Amount,
             EffectiveDate = effective,
-            TransactionDate = args.TransactionDate ?? effective,
+            TransactionDate = AsUtc(args.TransactionDate ?? args.EffectiveDate),
             TargetPeriodYear = effective.Year,
             TargetPeriodMonth = effective.Month,
             IsRecurring = args.IsRecurring,
-            RecurrenceEndDate = args.RecurrenceEndDate,
+            RecurrenceEndDate = AsUtc(args.RecurrenceEndDate),
             Notes = args.Notes,
             AttachmentFileId = args.AttachmentFileId,
             SourceModule = "Manual",
@@ -59,12 +66,12 @@ public sealed class PayrollTransactionService : IPayrollTransactionService
 
         txn.TypeId = args.TypeId;
         txn.Amount = args.Amount;
-        txn.EffectiveDate = args.EffectiveDate;
-        txn.TransactionDate = args.TransactionDate ?? args.EffectiveDate;
+        txn.EffectiveDate = AsUtc(args.EffectiveDate);
+        txn.TransactionDate = AsUtc(args.TransactionDate ?? args.EffectiveDate);
         txn.TargetPeriodYear = args.EffectiveDate.Year;
         txn.TargetPeriodMonth = args.EffectiveDate.Month;
         txn.IsRecurring = args.IsRecurring;
-        txn.RecurrenceEndDate = args.RecurrenceEndDate;
+        txn.RecurrenceEndDate = AsUtc(args.RecurrenceEndDate);
         txn.Notes = args.Notes;
         txn.AttachmentFileId = args.AttachmentFileId;
         await _db.SaveChangesAsync(ct);
