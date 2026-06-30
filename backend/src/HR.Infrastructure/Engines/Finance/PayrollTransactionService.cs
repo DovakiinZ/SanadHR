@@ -54,7 +54,7 @@ public sealed class PayrollTransactionService : IPayrollTransactionService
         if (args.Amount < 0) throw new InvalidOperationException("Amount must be non-negative.");
         var txn = await GetTrackedAsync(id, ct);
         if (!PayrollTransactionStateMachine.IsEditable(txn.Status))
-            throw new InvalidPayrollTransactionStateException(txn.Status, txn.Status);
+            throw new InvalidPayrollTransactionStateException(txn.Status, PayrollTransactionStatus.Draft);
         await EnsureTypeMatchesKindAsync(args.TypeId, txn.Kind, ct);
 
         txn.TypeId = args.TypeId;
@@ -86,7 +86,7 @@ public sealed class PayrollTransactionService : IPayrollTransactionService
     {
         var txn = await GetTrackedAsync(id, ct);
         if (PayrollTransactionStateMachine.IsImmutable(txn.Status))
-            throw new InvalidPayrollTransactionStateException(txn.Status, txn.Status);
+            throw new InvalidPayrollTransactionStateException(txn.Status, PayrollTransactionStatus.Draft);
         txn.AttachmentFileId = fileId;
         await _db.SaveChangesAsync(ct);
     }
@@ -150,6 +150,8 @@ public sealed class PayrollTransactionService : IPayrollTransactionService
             ? MasterDataObjectType.AdditionType : MasterDataObjectType.DeductionType;
         var item = await _db.MasterDataItems.FirstOrDefaultAsync(x => x.Id == typeId, ct)
             ?? throw new InvalidOperationException($"Type {typeId} not found.");
+        if (!item.IsActive)
+            throw new InvalidOperationException($"Type {typeId} is inactive.");
         if (!string.Equals(item.ObjectType, expected, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException($"Type {typeId} is '{item.ObjectType}', expected '{expected}'.");
     }

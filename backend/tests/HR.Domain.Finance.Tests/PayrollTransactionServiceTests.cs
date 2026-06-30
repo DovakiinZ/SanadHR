@@ -91,6 +91,29 @@ public class PayrollTransactionServiceTests
     }
 
     [Fact]
+    public async Task Create_rejects_inactive_type()
+    {
+        await using var db = Ctx($"t-{Guid.NewGuid()}");
+        // Seed an employee and a DeductionType master-data item that is inactive.
+        var emp = new Employee { EmployeeNumber = "E2", FirstName = "Sara", LastName = "Ali", Email = "sara@test.local" };
+        db.Employees.Add(emp);
+        var type = new MasterDataItem
+        {
+            ObjectType = MasterDataObjectType.DeductionType,
+            Code = "INACTIVE_DED",
+            NameAr = "خصم معطل",
+            NameEn = "Inactive Deduction",
+            IsActive = false
+        };
+        db.MasterDataItems.Add(type);
+        await db.SaveChangesAsync();
+
+        var act = () => Svc(db).CreateAsync(DeductionArgs(emp.Id, type.Id), default);
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage($"*{type.Id}*inactive*");
+    }
+
+    [Fact]
     public async Task Update_is_rejected_once_not_draft()
     {
         await using var db = Ctx($"t-{Guid.NewGuid()}");
