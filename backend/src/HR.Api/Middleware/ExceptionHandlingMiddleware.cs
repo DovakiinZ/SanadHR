@@ -1,6 +1,7 @@
 using System.Text.Json;
 using HR.Application.Common.Exceptions;
 using HR.Application.Common.Models;
+using HR.Domain.Engines.Finance.StateMachine;
 
 namespace HR.Api.Middleware;
 
@@ -39,12 +40,27 @@ public class ExceptionHandlingMiddleware
                 ApiResponse.Fail(exception.Message)),
             ConflictException => (StatusCodes.Status409Conflict,
                 ApiResponse.Fail(exception.Message)),
+            // Illegal lifecycle moves (run / transaction state machines) are a conflict, not a crash.
+            InvalidStateTransitionException => (StatusCodes.Status409Conflict,
+                ApiResponse.Fail(exception.Message)),
+            InvalidPayrollTransactionStateException => (StatusCodes.Status409Conflict,
+                ApiResponse.Fail(exception.Message)),
+            // Explicit business-rule violations carry a user-facing reason.
+            DomainException => (StatusCodes.Status422UnprocessableEntity,
+                ApiResponse.Fail(exception.Message)),
+            // Safety net: the engine/service layer signals business rules (inactive type,
+            // amount<0, duplicate code, …) via InvalidOperationException. Surface the real
+            // reason as 422 instead of an opaque 500. Logged as a warning, not swallowed.
+            InvalidOperationException => (StatusCodes.Status422UnprocessableEntity,
+                ApiResponse.Fail(exception.Message)),
             _ => (StatusCodes.Status500InternalServerError,
                 ApiResponse.Fail("An unexpected error occurred"))
         };
 
         if (statusCode == StatusCodes.Status500InternalServerError)
             _logger.LogError(exception, "Unhandled exception");
+        else if (statusCode == StatusCodes.Status422UnprocessableEntity && exception is InvalidOperationException)
+            _logger.LogWarning(exception, "Business-rule violation surfaced as 422 (consider migrating to DomainException)");
 
         context.Response.ContentType = "application/json";
         context.Response.StatusCode = statusCode;
