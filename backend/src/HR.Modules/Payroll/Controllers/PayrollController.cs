@@ -33,10 +33,11 @@ public class PayrollController : BaseApiController
     private readonly IStandardPayrollSeeder _seeder;
     private readonly IPayrollTypeService _types;
     private readonly IScopeEngine _scope;
+    private readonly IPayrollTransactionService _transactions;
 
     public PayrollController(ApplicationDbContext db, IPayrollRunEngine runEngine, IPayrollPreviewEngine previewEngine,
         IPayrollExecutionScheduler scheduler, IStandardPayrollSeeder seeder,
-        IPayrollTypeService types, IScopeEngine scope)
+        IPayrollTypeService types, IScopeEngine scope, IPayrollTransactionService transactions)
     {
         _db = db;
         _runEngine = runEngine;
@@ -45,6 +46,7 @@ public class PayrollController : BaseApiController
         _seeder = seeder;
         _types = types;
         _scope = scope;
+        _transactions = transactions;
     }
 
     [HttpPost("bootstrap")]
@@ -297,6 +299,102 @@ public class PayrollController : BaseApiController
             ExcludedCount = resolution.ExcludedByScope.Count,
             Warnings = resolution.Warnings.ToList(),
         });
+    }
+
+    // ---- transactions ----
+
+    [HttpGet("transactions")]
+    [RequirePermission("Payroll.View")]
+    public async Task<ActionResult<ApiResponse<List<PayrollTransactionDto>>>> ListTransactions(
+        [FromQuery] PayrollTransactionKind? kind, [FromQuery] Guid? employeeId,
+        [FromQuery] int? periodYear, [FromQuery] int? periodMonth, [FromQuery] Guid? typeId,
+        [FromQuery] PayrollTransactionStatus? status, [FromQuery] DateTime? dateFrom, [FromQuery] DateTime? dateTo,
+        CancellationToken ct)
+    {
+        var rows = await _transactions.ListAsync(
+            new PayrollTransactionFilter(kind, employeeId, periodYear, periodMonth, typeId, status, dateFrom, dateTo), ct);
+        return OkResponse(rows.ToList());
+    }
+
+    [HttpGet("transactions/{id:guid}")]
+    [RequirePermission("Payroll.View")]
+    public async Task<ActionResult<ApiResponse<PayrollTransactionDto>>> GetTransaction(Guid id, CancellationToken ct)
+    {
+        var dto = await _transactions.GetAsync(id, ct);
+        return dto is null ? NotFound(ApiResponse<PayrollTransactionDto>.Fail("غير موجود")) : OkResponse(dto);
+    }
+
+    [HttpPost("transactions")]
+    [RequirePermission("Payroll.Create")]
+    public async Task<ActionResult<ApiResponse<PayrollTransactionDto>>> CreateTransaction(
+        [FromBody] CreateTransactionRequest req, CancellationToken ct)
+    {
+        var id = await _transactions.CreateAsync(new CreatePayrollTransactionArgs(
+            req.Kind, req.EmployeeId, req.TypeId, req.Amount, req.EffectiveDate, req.TransactionDate,
+            req.IsRecurring, req.RecurrenceEndDate, req.Notes, req.AttachmentFileId, req.SubmitImmediately), ct);
+        return CreatedResponse(await _transactions.GetAsync(id, ct));
+    }
+
+    [HttpPut("transactions/{id:guid}")]
+    [RequirePermission("Payroll.Edit")]
+    public async Task<ActionResult<ApiResponse<PayrollTransactionDto>>> UpdateTransaction(
+        Guid id, [FromBody] UpdateTransactionRequest req, CancellationToken ct)
+    {
+        await _transactions.UpdateAsync(id, new UpdatePayrollTransactionArgs(
+            req.TypeId, req.Amount, req.EffectiveDate, req.TransactionDate,
+            req.IsRecurring, req.RecurrenceEndDate, req.Notes, req.AttachmentFileId), ct);
+        return OkResponse(await _transactions.GetAsync(id, ct));
+    }
+
+    [HttpPost("transactions/{id:guid}/submit")]
+    [RequirePermission("Payroll.Edit")]
+    public async Task<ActionResult<ApiResponse<PayrollTransactionDto>>> SubmitTransaction(Guid id, CancellationToken ct)
+    {
+        await _transactions.SubmitAsync(id, ct);
+        return OkResponse(await _transactions.GetAsync(id, ct));
+    }
+
+    [HttpPost("transactions/{id:guid}/approve")]
+    [RequirePermission("Payroll.Approve")]
+    public async Task<ActionResult<ApiResponse<PayrollTransactionDto>>> ApproveTransaction(Guid id, CancellationToken ct)
+    {
+        await _transactions.ApproveAsync(id, ct);
+        return OkResponse(await _transactions.GetAsync(id, ct));
+    }
+
+    [HttpPost("transactions/{id:guid}/reject")]
+    [RequirePermission("Payroll.Approve")]
+    public async Task<ActionResult<ApiResponse<PayrollTransactionDto>>> RejectTransaction(
+        Guid id, [FromBody] RejectTransactionRequest req, CancellationToken ct)
+    {
+        await _transactions.RejectAsync(id, req.Reason, ct);
+        return OkResponse(await _transactions.GetAsync(id, ct));
+    }
+
+    [HttpPost("transactions/{id:guid}/cancel")]
+    [RequirePermission("Payroll.Edit")]
+    public async Task<ActionResult<ApiResponse<PayrollTransactionDto>>> CancelTransaction(
+        Guid id, [FromBody] CancelTransactionRequest req, CancellationToken ct)
+    {
+        await _transactions.CancelAsync(id, req.Reason, ct);
+        return OkResponse(await _transactions.GetAsync(id, ct));
+    }
+
+    [HttpPost("transactions/{id:guid}/attachment")]
+    [RequirePermission("Payroll.Edit")]
+    public async Task<ActionResult<ApiResponse<PayrollTransactionDto>>> SetTransactionAttachment(
+        Guid id, [FromBody] SetAttachmentRequest req, CancellationToken ct)
+    {
+        await _transactions.SetAttachmentAsync(id, req.FileId, ct);
+        return OkResponse(await _transactions.GetAsync(id, ct));
+    }
+
+    [HttpDelete("transactions/{id:guid}")]
+    [RequirePermission("Payroll.Delete")]
+    public async Task<ActionResult<ApiResponse<object>>> DeleteTransaction(Guid id, CancellationToken ct)
+    {
+        await _transactions.DeleteAsync(id, ct);
+        return OkResponse<object>(new { deleted = true });
     }
 
     // ---- helpers ----

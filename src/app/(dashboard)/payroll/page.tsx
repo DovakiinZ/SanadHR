@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Banknote, Plus, Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
@@ -68,6 +69,11 @@ function Inner() {
         {canRun && defs.length > 0 && (
           <Button onClick={() => setCreateOpen(true)} className="h-10 gap-2 font-bold text-sm"><Plus className="h-4 w-4" /> مسيّر جديد</Button>
         )}
+      </div>
+
+      <div className="flex items-center gap-2">
+        <Link href="/payroll/additions" className="text-sm border border-border px-3 py-1.5 hover:bg-card/50 transition-colors">الإضافات</Link>
+        <Link href="/payroll/deductions" className="text-sm border border-border px-3 py-1.5 hover:bg-card/50 transition-colors">الاستقطاعات</Link>
       </div>
 
       {loading ? (
