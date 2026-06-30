@@ -252,3 +252,26 @@ public class PayrollRunPopulationConfiguration : IEntityTypeConfiguration<Payrol
             .OnDelete(DeleteBehavior.Cascade);
     }
 }
+
+public class PayrollTransactionConfiguration : IEntityTypeConfiguration<PayrollTransaction>
+{
+    public void Configure(EntityTypeBuilder<PayrollTransaction> builder)
+    {
+        builder.ToTable("engine_payroll_transactions");
+        builder.HasKey(x => x.Id);
+
+        builder.Property(x => x.Amount).HasColumnType("decimal(18,2)");
+        builder.Property(x => x.SourceModule).HasMaxLength(60).IsRequired();
+        builder.Property(x => x.ReferenceType).HasMaxLength(120);
+        builder.Property(x => x.Notes).HasMaxLength(2000);
+        builder.Property(x => x.StatusReason).HasMaxLength(1000);
+        builder.Property(x => x.ReversalReason).HasMaxLength(1000);
+
+        builder.HasIndex(x => x.TenantId);
+        builder.HasIndex(x => new { x.TenantId, x.EmployeeId });
+        builder.HasIndex(x => new { x.TenantId, x.Kind, x.Status });
+        builder.HasIndex(x => new { x.TenantId, x.TargetPeriodYear, x.TargetPeriodMonth });
+        builder.HasIndex(x => new { x.ReferenceType, x.ReferenceId });
+        builder.HasIndex(x => x.ReversesTransactionId);
+    }
+}
