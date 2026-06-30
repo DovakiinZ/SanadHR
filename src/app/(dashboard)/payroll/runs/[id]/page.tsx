@@ -145,11 +145,11 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
 }
 
 interface PayslipComponent {
-  code: string;
-  componentCode: string;
-  name?: string | null;
-  amount: number;
-  kind?: string | null;
+  Code: string;
+  ComponentCode: string;
+  Kind?: number | null;
+  Amount: number;
+  Applied?: boolean;
 }
 
 function PayslipRows({ payslip: p, currency }: { payslip: import("@/lib/api/payroll").PayslipDto; currency: string }) {
@@ -157,11 +157,13 @@ function PayslipRows({ payslip: p, currency }: { payslip: import("@/lib/api/payr
 
   const components: PayslipComponent[] = (() => {
     if (!p.componentsJson) return [];
-    try { return JSON.parse(p.componentsJson) as PayslipComponent[]; }
-    catch { return []; }
+    try {
+      const parsed = JSON.parse(p.componentsJson) as { components?: PayslipComponent[] };
+      return Array.isArray(parsed?.components) ? parsed.components : [];
+    } catch { return []; }
   })();
 
-  const txnLines = components.filter((c) => c.code?.startsWith("TXN:"));
+  const txnLines = components.filter((c) => c.Code?.startsWith("TXN:"));
 
   return (
     <>
@@ -184,11 +186,10 @@ function PayslipRows({ payslip: p, currency }: { payslip: import("@/lib/api/payr
       {expanded && txnLines.map((c, i) => (
         <TableRow key={i} className="border-border bg-muted/30 hover:bg-muted/40">
           <TableCell colSpan={2} className="pr-8 text-xs text-muted-foreground">
-            {c.componentCode || c.code}
-            {c.name ? ` — ${c.name}` : ""}
+            {c.ComponentCode || c.Code}
           </TableCell>
           <TableCell colSpan={4} className="text-xs tabular-nums text-muted-foreground">
-            {money(c.amount, p.currency || currency)}
+            {money(c.Amount, p.currency || currency)}
           </TableCell>
         </TableRow>
       ))}
