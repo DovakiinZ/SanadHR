@@ -32,3 +32,7 @@ public sealed class UpdateTransactionRequest
 public sealed class RejectTransactionRequest { public string Reason { get; set; } = ""; }
 public sealed class CancelTransactionRequest { public string? Reason { get; set; } }
 public sealed class SetAttachmentRequest { public Guid FileId { get; set; } }
+
+public sealed record ReverseTransactionRequest(string Reason, bool CreateCorrection, decimal? CorrectedAmount);
+
+public sealed record TransactionImpactDto(int PeriodYear, int PeriodMonth, int CutoffDay, bool CarriedAfterCutoff);

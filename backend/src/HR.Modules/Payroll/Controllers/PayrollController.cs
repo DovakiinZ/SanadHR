@@ -34,10 +34,12 @@ public class PayrollController : BaseApiController
     private readonly IPayrollTypeService _types;
     private readonly IScopeEngine _scope;
     private readonly IPayrollTransactionService _transactions;
+    private readonly IPayrollTransactionReversalService _reversals;
 
     public PayrollController(ApplicationDbContext db, IPayrollRunEngine runEngine, IPayrollPreviewEngine previewEngine,
         IPayrollExecutionScheduler scheduler, IStandardPayrollSeeder seeder,
-        IPayrollTypeService types, IScopeEngine scope, IPayrollTransactionService transactions)
+        IPayrollTypeService types, IScopeEngine scope, IPayrollTransactionService transactions,
+        IPayrollTransactionReversalService reversals)
     {
         _db = db;
         _runEngine = runEngine;
@@ -47,6 +49,7 @@ public class PayrollController : BaseApiController
         _types = types;
         _scope = scope;
         _transactions = transactions;
+        _reversals = reversals;
     }
 
     [HttpPost("bootstrap")]
@@ -395,6 +398,32 @@ public class PayrollController : BaseApiController
     {
         await _transactions.DeleteAsync(id, ct);
         return OkResponse<object>(new { deleted = true });
+    }
+
+    [HttpPost("transactions/{id:guid}/reverse")]
+    [RequirePermission("Payroll.Approve")]
+    public async Task<ActionResult<ApiResponse<PayrollTransactionDto>>> ReverseTransaction(
+        Guid id, [FromBody] ReverseTransactionRequest req, CancellationToken ct)
+    {
+        await _reversals.ReverseAsync(id, req.Reason, req.CreateCorrection, req.CorrectedAmount, ct);
+        return OkResponse(await _transactions.GetAsync(id, ct));
+    }
+
+    [HttpGet("transactions/impact-preview")]
+    [RequirePermission("Payroll.View")]
+    public async Task<ActionResult<ApiResponse<TransactionImpactDto>>> TransactionImpactPreview(
+        [FromQuery] DateTime effectiveDate, CancellationToken ct)
+    {
+        // Use the most recent payroll definition version's cutoff (the standard MONTHLY cycle in 2C).
+        var version = await _db.PayrollDefinitionVersions.AsNoTracking()
+            .OrderByDescending(v => v.CreatedAt)
+            .Select(v => new { v.CutoffDay, v.CarryToNextPeriod })
+            .FirstOrDefaultAsync(ct);
+        var cutoffDay = version?.CutoffDay ?? 27;
+        var carry = version?.CarryToNextPeriod ?? true;
+        var (year, month) = PayrollPeriodResolver.Resolve(effectiveDate, cutoffDay, carry);
+        var carried = carry && effectiveDate.Day > cutoffDay;
+        return OkResponse(new TransactionImpactDto(year, month, cutoffDay, carried));
     }
 
     // ---- helpers ----
