@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Plus, Pencil, Trash2, Loader2, Send, Check, X, Ban, Paperclip } from "lucide-react";
+import { ArrowRight, Plus, Pencil, Trash2, Loader2, Send, Check, X, Ban, Paperclip, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,7 +21,8 @@ import { type Employee } from "@/types";
 import {
   listTransactions, createTransaction, updateTransaction, submitTransaction, approveTransaction,
   rejectTransaction, cancelTransaction, setTransactionAttachment, deleteTransaction,
-  type PayrollTransaction, type TransactionKind,
+  reverseTransaction, getTransactionImpact,
+  type PayrollTransaction, type TransactionKind, type TransactionImpactPreview,
 } from "@/lib/api/payroll-transactions";
 
 const MONTHS_AR = ["", "يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
@@ -78,6 +79,17 @@ function Inner({ kind }: { kind: TransactionKind }) {
   const [deleteTarget, setDeleteTarget] = useState<PayrollTransaction | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
+  // Reverse dialog
+  const [reverseTarget, setReverseTarget] = useState<PayrollTransaction | null>(null);
+  const [reverseReason, setReverseReason] = useState("");
+  const [reverseCreateCorrection, setReverseCreateCorrection] = useState(false);
+  const [reverseCorrectedAmount, setReverseCorrectedAmount] = useState("");
+  const [reversing, setReversing] = useState(false);
+
+  // Impact preview for create/edit form
+  const [impact, setImpact] = useState<TransactionImpactPreview | null>(null);
+  const impactAbortRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const load = useCallback(async () => {
     setLoading(true);
     try { setRows(await listTransactions({ kind })); }
@@ -98,7 +110,20 @@ function Inner({ kind }: { kind: TransactionKind }) {
   const empOptions = useMemo(() => employees.map((e) => ({ value: e.id, label: e.name })), [employees]);
   const typeOptions = useMemo(() => types.map((t) => ({ value: t.id, label: t.nameAr || t.nameEn })), [types]);
 
-  function openCreate() { setEditing(null); setForm(emptyForm); setDialogOpen(true); }
+  // Fetch impact preview whenever effectiveDate changes in the form
+  useEffect(() => {
+    const date = form.effectiveDate.slice(0, 10);
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) { setImpact(null); return; }
+    if (impactAbortRef.current) clearTimeout(impactAbortRef.current);
+    impactAbortRef.current = setTimeout(async () => {
+      try { setImpact(await getTransactionImpact(date)); }
+      catch { setImpact(null); }
+    }, 300);
+    return () => { if (impactAbortRef.current) clearTimeout(impactAbortRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.effectiveDate]);
+
+  function openCreate() { setEditing(null); setForm(emptyForm); setImpact(null); setDialogOpen(true); }
   function openEdit(t: PayrollTransaction) {
     setEditing(t);
     setForm({
@@ -107,7 +132,33 @@ function Inner({ kind }: { kind: TransactionKind }) {
       transactionDate: t.transactionDate ? t.transactionDate.slice(0, 10) : "",
       notes: t.notes ?? "", isRecurring: t.isRecurring,
     });
+    setImpact(null);
     setDialogOpen(true);
+  }
+
+  function openReverse(t: PayrollTransaction) {
+    setReverseTarget(t);
+    setReverseReason("");
+    setReverseCreateCorrection(false);
+    setReverseCorrectedAmount("");
+  }
+
+  async function confirmReverse() {
+    if (!reverseTarget) return;
+    if (!reverseReason.trim()) { toast.error("سبب العكس مطلوب"); return; }
+    setReversing(true);
+    try {
+      const correctedAmount = reverseCreateCorrection && reverseCorrectedAmount
+        ? Number(reverseCorrectedAmount) : undefined;
+      await reverseTransaction(reverseTarget.id, {
+        reason: reverseReason.trim(),
+        createCorrection: reverseCreateCorrection,
+        correctedAmount,
+      });
+      toast.success("تم عكس المعاملة");
+      setReverseTarget(null);
+      await load();
+    } catch (err) { notifyError(err, "تعذر عكس المعاملة"); } finally { setReversing(false); }
   }
 
   async function save(submit: boolean) {
@@ -228,6 +279,9 @@ function Inner({ kind }: { kind: TransactionKind }) {
                     {canEdit && (t.status === 0 || t.status === 2) && (
                       <button onClick={() => act(t.id, () => cancelTransaction(t.id), "تم الإلغاء")} className="h-8 w-8 inline-flex items-center justify-center text-muted-foreground hover:text-foreground" title="إلغاء"><Ban className="h-4 w-4" /></button>
                     )}
+                    {canApprove && t.status === 6 && (
+                      <button onClick={() => openReverse(t)} className="h-8 w-8 inline-flex items-center justify-center text-amber-500 hover:text-amber-400" title="عكس المعاملة"><RotateCcw className="h-4 w-4" /></button>
+                    )}
                     {canEdit && t.status !== 6 && t.status !== 7 && (
                       <label className="h-8 w-8 inline-flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer" title="إرفاق ملف">
                         <Paperclip className="h-4 w-4" />
@@ -264,6 +318,13 @@ function Inner({ kind }: { kind: TransactionKind }) {
             <div className="space-y-2">
               <Label className="text-xs font-bold uppercase tracking-wider">تاريخ السريان</Label>
               <Input type="date" value={form.effectiveDate} onChange={(e) => setForm({ ...form, effectiveDate: e.target.value })} className="bg-secondary border-border" />
+              {impact && (
+                <p className="text-xs text-muted-foreground">
+                  {"سيُحتسب في رواتب "}
+                  {MONTHS_AR[impact.periodMonth] ?? impact.periodMonth}{" "}{impact.periodYear}
+                  {impact.carriedAfterCutoff && ` — بعد تاريخ الإقفال (يوم ${impact.cutoffDay})`}
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label className="text-xs font-bold uppercase tracking-wider">تاريخ المعاملة (اختياري)</Label>
@@ -294,6 +355,63 @@ function Inner({ kind }: { kind: TransactionKind }) {
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteTarget(null)}>إلغاء</Button>
             <Button onClick={confirmDelete} className="bg-destructive text-white hover:bg-destructive/90">حذف</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!reverseTarget} onOpenChange={(o) => { if (!o && !reversing) setReverseTarget(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>عكس المعاملة</DialogTitle>
+            <DialogDescription>
+              {reverseTarget && (
+                <>سيتم عكس {copy.one} بمبلغ <span className="font-bold text-foreground">{reverseTarget.amount.toLocaleString()}</span> للموظف <span className="font-bold text-foreground">{reverseTarget.employeeName}</span>.</>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label className="text-xs font-bold uppercase tracking-wider">سبب العكس <span className="text-destructive">*</span></Label>
+              <Input
+                value={reverseReason}
+                onChange={(e) => setReverseReason(e.target.value)}
+                placeholder="أدخل سبب العكس…"
+                className="bg-secondary border-border"
+                disabled={reversing}
+              />
+            </div>
+            <label className="flex items-center gap-2 text-sm cursor-pointer border border-border px-3 py-2">
+              <input
+                type="checkbox"
+                checked={reverseCreateCorrection}
+                onChange={(e) => setReverseCreateCorrection(e.target.checked)}
+                disabled={reversing}
+              />
+              إنشاء معاملة تصحيح جديدة (مسودة)
+            </label>
+            {reverseCreateCorrection && (
+              <div className="space-y-2">
+                <Label className="text-xs font-bold uppercase tracking-wider">المبلغ المصحَّح (اختياري)</Label>
+                <Input
+                  type="number"
+                  step="any"
+                  min={0}
+                  value={reverseCorrectedAmount}
+                  onChange={(e) => setReverseCorrectedAmount(e.target.value)}
+                  placeholder="اتركه فارغاً لاستخدام المبلغ الأصلي"
+                  className="bg-secondary border-border"
+                  dir="ltr"
+                  disabled={reversing}
+                />
+              </div>
+            )}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setReverseTarget(null)} disabled={reversing}>إلغاء</Button>
+            <Button onClick={confirmReverse} disabled={reversing || !reverseReason.trim()} className="bg-amber-600 text-white hover:bg-amber-500 font-bold">
+              {reversing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+              <span className="mr-1">{reversing ? "جاري العكس..." : "تأكيد العكس"}</span>
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
