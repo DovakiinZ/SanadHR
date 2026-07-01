@@ -74,7 +74,9 @@ public static class MasterDataDefaults
             ("GOSI", "GOSI", "التأمينات الاجتماعية"),
             ("LOAN", "Loan Repayment", "سداد قرض"),
             ("ABSENCE", "Absence Deduction", "خصم غياب"),
-            ("PENALTY", "Penalty", "جزاء"));
+            ("PENALTY", "Penalty", "جزاء"),
+            ("LATE", "Late Arrival Deduction", "خصم تأخير"),
+            ("SHORTAGE", "Working Hours Shortage", "خصم نقص ساعات العمل"));
 
         Add(MasterDataObjectType.DocumentType,
             ("CONTRACT", "Employment Contract", "عقد عمل"),

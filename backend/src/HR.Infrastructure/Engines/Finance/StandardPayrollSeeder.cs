@@ -22,8 +22,9 @@ public sealed class StandardPayrollSeeder : IStandardPayrollSeeder
     private sealed record RuleDef(string Code, string NameAr, PayComponentKind Kind, string Expr);
 
     // Facts come from the fact provider: BasicSalary, TotalAllowances, TotalAdditions, TotalDeductions,
-    // GosiBase, GosiRate, and the attendance inputs (DailyWage, HourlyWage, AbsentDays, LateHours,
-    // ShortageHours). Earnings build gross; deductions reduce net (aggregated by RuleEngineCore).
+    // GosiBase, GosiRate. Earnings build gross; deductions reduce net (aggregated by RuleEngineCore).
+    // Attendance penalties are now visible PayrollTransaction records (sub-project 2D) and flow through
+    // TotalDeductions — the former ATTENDANCE_DED rule is retired.
     private static readonly RuleDef[] Rules =
     {
         new("BASIC", "الراتب الأساسي", PayComponentKind.Earning, "BasicSalary"),
@@ -31,11 +32,6 @@ public sealed class StandardPayrollSeeder : IStandardPayrollSeeder
         new("ADDITIONS", "الإضافات", PayComponentKind.Earning, "TotalAdditions"),
         new("GOSI", "التأمينات الاجتماعية", PayComponentKind.Deduction, "ROUND(PERCENT(GosiBase, GosiRate), 2)"),
         new("DEDUCTIONS", "الاستقطاعات", PayComponentKind.Deduction, "TotalDeductions"),
-        // Automatic attendance deduction: full-day absences at the daily wage, plus late + missing
-        // hours at the hourly wage. Computed by the system from the attendance engine; HR reviews it
-        // in the run preview before approving.
-        new("ATTENDANCE_DED", "حسم الغياب والتأخير والساعات الناقصة", PayComponentKind.Deduction,
-            "ROUND(AbsentDays * DailyWage + (LateHours + ShortageHours) * HourlyWage, 2)"),
     };
 
     public async Task<Guid> EnsureStandardMonthlyAsync(CancellationToken ct = default)
@@ -67,7 +63,7 @@ public sealed class StandardPayrollSeeder : IStandardPayrollSeeder
         }
 
         // Idempotently top-up any rules missing from the active version (so an already-seeded tenant
-        // picks up newly-added standard rules such as ATTENDANCE_DED without a version bump).
+        // picks up newly-added standard rules without a version bump).
         await EnsureRulesPresentAsync(ruleSetVersionId, ct);
 
         if (definition is not null && definition.CurrentVersionId is not null)
@@ -132,6 +128,13 @@ public sealed class StandardPayrollSeeder : IStandardPayrollSeeder
             if (have.Contains(r.Code)) continue;
             _db.FinanceRules.Add(BuildRule(ruleSetVersionId, r, seq++));
         }
+
+        // 2D: retire the fact-based attendance rule — attendance deductions are now visible records.
+        // Deactivate (never delete) any legacy ATTENDANCE_DED rule so historical runs stay auditable.
+        var legacy = await _db.FinanceRules
+            .Where(r => r.RuleSetVersionId == ruleSetVersionId && r.Code == "ATTENDANCE_DED" && r.IsActive)
+            .ToListAsync(ct);
+        foreach (var r in legacy) r.IsActive = false;
     }
 
     private static Rule BuildRule(Guid ruleSetVersionId, RuleDef r, int sequence)
