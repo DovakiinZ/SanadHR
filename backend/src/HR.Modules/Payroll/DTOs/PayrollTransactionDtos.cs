@@ -36,3 +36,17 @@ public sealed class SetAttachmentRequest { public Guid FileId { get; set; } }
 public sealed record ReverseTransactionRequest(string Reason, bool CreateCorrection, decimal? CorrectedAmount);
 
 public sealed record TransactionImpactDto(int PeriodYear, int PeriodMonth, int CutoffDay, bool CarriedAfterCutoff);
+
+public sealed class SyncAttendanceDeductionsRequest
+{
+    public Guid DefinitionId { get; set; }
+    public int Year { get; set; }
+    public int Month { get; set; }
+    public List<Guid>? EmployeeIds { get; set; }
+}
+
+public sealed record AttendanceDeductionSyncReportDto(
+    int Created, int Updated, int Removed, int SkippedPosted, int TotalProcessed);
+
+public sealed record AttendanceBreakdownDto(
+    Guid AttendanceRecordId, DateTime Date, string PenaltyKind, int Minutes, int Days, decimal AmountContribution);

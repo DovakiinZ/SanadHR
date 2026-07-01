@@ -275,3 +275,23 @@ public class PayrollTransactionConfiguration : IEntityTypeConfiguration<PayrollT
         builder.HasIndex(x => x.ReversesTransactionId);
     }
 }
+
+public class PayrollTransactionAttendanceReferenceConfiguration : IEntityTypeConfiguration<PayrollTransactionAttendanceReference>
+{
+    public void Configure(EntityTypeBuilder<PayrollTransactionAttendanceReference> builder)
+    {
+        builder.ToTable("engine_payroll_transaction_attendance_refs");
+        builder.HasKey(x => x.Id);
+
+        builder.Property(x => x.AmountContribution).HasColumnType("decimal(18,2)");
+
+        builder.HasIndex(x => x.TenantId);
+        builder.HasIndex(x => x.PayrollTransactionId);
+        builder.HasIndex(x => x.AttendanceRecordId);
+
+        builder.HasOne<PayrollTransaction>()
+            .WithMany()
+            .HasForeignKey(x => x.PayrollTransactionId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}

@@ -1,5 +1,35 @@
 import { apiFetch } from "../api-client";
 
+export interface AttendanceDeductionSyncReport {
+  created: number;
+  updated: number;
+  removed: number;
+  skippedPosted: number;
+  totalProcessed: number;
+}
+
+export interface AttendanceBreakdownRow {
+  attendanceRecordId: string;
+  date: string;
+  penaltyKind: string;
+  minutes: number;
+  days: number;
+  amountContribution: number;
+}
+
+export async function syncAttendanceDeductions(body: {
+  definitionId: string;
+  year: number;
+  month: number;
+  employeeIds?: string[];
+}): Promise<AttendanceDeductionSyncReport> {
+  return apiFetch<AttendanceDeductionSyncReport>("/api/payroll/attendance-deductions/sync", { method: "POST", body });
+}
+
+export async function getAttendanceBreakdown(transactionId: string): Promise<AttendanceBreakdownRow[]> {
+  return apiFetch<AttendanceBreakdownRow[]>(`/api/payroll/transactions/${transactionId}/attendance-breakdown`);
+}
+
 // Mirror of backend PayrollTransactionKind / PayrollTransactionStatus (int enums serialized as numbers).
 export type TransactionKind = 1 | 2; // 1 = Addition, 2 = Deduction
 export type TransactionStatus = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
