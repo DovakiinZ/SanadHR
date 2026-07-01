@@ -17,8 +17,10 @@ public sealed class PayrollFactProvider : IPayrollFactProvider
 {
     private readonly ApplicationDbContext _db;
     private readonly IScopeEngine _scope;
+    private readonly AttendanceWageCalculator _attendance;
 
-    public PayrollFactProvider(ApplicationDbContext db, IScopeEngine scope) { _db = db; _scope = scope; }
+    public PayrollFactProvider(ApplicationDbContext db, IScopeEngine scope, AttendanceWageCalculator attendance)
+    { _db = db; _scope = scope; _attendance = attendance; }
 
     /// <summary>Daily wage for the period under the configured proration basis.</summary>
     public static decimal DailyWageFor(DayBasis basis, decimal monthlyWage, int year, int month, int workingDays)
@@ -80,21 +82,10 @@ public sealed class PayrollFactProvider : IPayrollFactProvider
         var deps = await _db.Departments.AsNoTracking().Where(d => depIds.Contains(d.Id))
             .Select(d => new { d.Id, Name = d.NameAr ?? d.Name }).ToDictionaryAsync(d => d.Id, d => d.Name, ct);
 
-        // Attendance aggregates for the period. Shortage on Absent days is excluded here because the
-        // whole-day absence is already deducted at the daily-wage rate (avoids double-counting).
-        var attendance = await _db.AttendanceRecords.AsNoTracking()
-            .Where(a => empIds.Contains(a.EmployeeId) && a.Date >= period.Start && a.Date <= period.End)
-            .GroupBy(a => a.EmployeeId)
-            .Select(g => new
-            {
-                EmployeeId = g.Key,
-                Days = g.Count(),
-                OvertimeMinutes = g.Sum(x => x.OvertimeMinutes),
-                LateMinutes = g.Sum(x => x.LateMinutes),
-                AbsentDays = g.Count(x => x.Status == AttendanceStatus.Absent),
-                ShortageMinutes = g.Sum(x => x.Status == AttendanceStatus.Absent ? 0 : x.ShortageMinutes),
-            })
-            .ToDictionaryAsync(x => x.EmployeeId, ct);
+        // Attendance aggregates for the period (shared with the attendance-deduction sync so records and
+        // the inert facts can never drift). Shortage on Absent days is excluded inside the calculator.
+        var attendance = (await _attendance.AggregateAsync(empIds, period, ct))
+            .ToDictionary(kv => kv.Key, kv => kv.Value);
 
         var allowByEmp = allowances.GroupBy(a => a.EmployeeId).ToDictionary(g => g.Key, g => g.ToList());
         var addByEmp = additions.GroupBy(a => a.EmployeeId).ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
