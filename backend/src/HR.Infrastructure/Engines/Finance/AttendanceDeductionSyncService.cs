@@ -76,7 +76,7 @@ public sealed class AttendanceDeductionSyncService : IAttendanceDeductionSyncSer
                 var typeId = typeByKind[kind];
                 existingByKey.TryGetValue((empId, typeId), out var txn);
 
-                if (txn is { Status: PayrollTransactionStatus.Posted })
+                if (txn is { Status: PayrollTransactionStatus.Posted } or { Status: PayrollTransactionStatus.Reversed })
                 { skipped++; continue; }
 
                 if (amount <= 0m)

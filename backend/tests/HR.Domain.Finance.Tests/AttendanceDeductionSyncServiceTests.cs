@@ -129,6 +129,29 @@ public class AttendanceDeductionSyncServiceTests
     }
 
     [Fact]
+    public async Task Reversed_record_is_skipped_not_mutated()
+    {
+        await using var db = Ctx($"t-{Guid.NewGuid()}");
+        var emp = await SeedAsync(db);
+        db.AttendanceRecords.Add(new AttendanceRecord { EmployeeId = emp, Date = Utc(2026,7,2), Status = AttendanceStatus.Absent });
+        await db.SaveChangesAsync();
+        var period = new PayrollPeriod(Utc(2026,7,1), Utc(2026,7,31));
+        await Svc(db).SyncAsync(Version(), period, new[] { emp }, default);
+
+        var txn = await db.PayrollTransactions.SingleAsync(t => t.EmployeeId == emp);
+        txn.Status = PayrollTransactionStatus.Reversed;
+        txn.Amount = 999m; // sentinel — must not be overwritten by re-sync
+        await db.SaveChangesAsync();
+        var report = await Svc(db).SyncAsync(Version(), period, new[] { emp }, default);
+
+        report.SkippedPosted.Should().Be(1);
+        report.Updated.Should().Be(0);
+        var after = await db.PayrollTransactions.SingleAsync(t => t.EmployeeId == emp);
+        after.Amount.Should().Be(999m);
+        after.Status.Should().Be(PayrollTransactionStatus.Reversed);
+    }
+
+    [Fact]
     public async Task Toggle_off_is_a_noop()
     {
         await using var db = Ctx($"t-{Guid.NewGuid()}");
