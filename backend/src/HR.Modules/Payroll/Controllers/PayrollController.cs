@@ -35,11 +35,12 @@ public class PayrollController : BaseApiController
     private readonly IScopeEngine _scope;
     private readonly IPayrollTransactionService _transactions;
     private readonly IPayrollTransactionReversalService _reversals;
+    private readonly IAttendanceDeductionSyncService _attendanceSync;
 
     public PayrollController(ApplicationDbContext db, IPayrollRunEngine runEngine, IPayrollPreviewEngine previewEngine,
         IPayrollExecutionScheduler scheduler, IStandardPayrollSeeder seeder,
         IPayrollTypeService types, IScopeEngine scope, IPayrollTransactionService transactions,
-        IPayrollTransactionReversalService reversals)
+        IPayrollTransactionReversalService reversals, IAttendanceDeductionSyncService attendanceSync)
     {
         _db = db;
         _runEngine = runEngine;
@@ -50,6 +51,7 @@ public class PayrollController : BaseApiController
         _scope = scope;
         _transactions = transactions;
         _reversals = reversals;
+        _attendanceSync = attendanceSync;
     }
 
     [HttpPost("bootstrap")]
@@ -424,6 +426,40 @@ public class PayrollController : BaseApiController
         var (year, month) = PayrollPeriodResolver.Resolve(effectiveDate, cutoffDay, carry);
         var carried = carry && effectiveDate.Day > cutoffDay;
         return OkResponse(new TransactionImpactDto(year, month, cutoffDay, carried));
+    }
+
+    // ---- attendance deductions (2D) ----
+
+    [HttpPost("attendance-deductions/sync")]
+    [RequirePermission("Payroll.Configure")]
+    public async Task<ActionResult<ApiResponse<AttendanceDeductionSyncReportDto>>> SyncAttendanceDeductions(
+        [FromBody] SyncAttendanceDeductionsRequest req, CancellationToken ct)
+    {
+        var versionId = await ResolveVersionAsync(req.DefinitionId, ct);
+        var version = await _db.PayrollDefinitionVersions.AsNoTracking().FirstOrDefaultAsync(v => v.Id == versionId, ct)
+            ?? throw new NotFoundException("PayrollDefinitionVersion", versionId);
+
+        IReadOnlyCollection<Guid> employeeIds = req.EmployeeIds is { Count: > 0 }
+            ? req.EmployeeIds
+            : (await _scope.ResolveAsync(SelectionScopeJson.Parse(version.SelectionScopeJson), ct)).IncludedEmployeeIds.ToList();
+
+        var report = await _attendanceSync.SyncAsync(version, PayrollPeriod.Monthly(req.Year, req.Month), employeeIds, ct);
+        return OkResponse(new AttendanceDeductionSyncReportDto(
+            report.Created, report.Updated, report.Removed, report.SkippedPosted, report.TotalProcessed),
+            $"Synced {report.TotalProcessed} attendance line(s).");
+    }
+
+    [HttpGet("transactions/{id:guid}/attendance-breakdown")]
+    [RequirePermission("Payroll.View")]
+    public async Task<ActionResult<ApiResponse<List<AttendanceBreakdownDto>>>> AttendanceBreakdown(Guid id, CancellationToken ct)
+    {
+        var rows = await _db.PayrollTransactionAttendanceReferences.AsNoTracking()
+            .Where(r => r.PayrollTransactionId == id)
+            .OrderBy(r => r.Date)
+            .Select(r => new AttendanceBreakdownDto(
+                r.AttendanceRecordId, r.Date, r.PenaltyKind.ToString(), r.Minutes, r.Days, r.AmountContribution))
+            .ToListAsync(ct);
+        return OkResponse(rows);
     }
 
     // ---- helpers ----
