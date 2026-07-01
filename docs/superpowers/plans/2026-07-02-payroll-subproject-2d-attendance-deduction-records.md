@@ -481,7 +481,6 @@ using HR.Domain.Engines.MasterData;
 using HR.Domain.Entities;
 using HR.Domain.Enums;
 using HR.Infrastructure.Engines.Finance;
-using HR.Infrastructure.Engines.Scope;
 using HR.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
@@ -504,7 +503,9 @@ public class AttendanceDeductionSyncServiceTests
 
     private static AttendanceDeductionSyncService Svc(ApplicationDbContext db)
     {
-        var facts = new PayrollFactProvider(db, new ScopeEngine(db), new AttendanceWageCalculator(db));
+        // PayrollFactProvider never dereferences IScopeEngine when an explicit employee population is passed
+        // (BuildInputsAsync:41), and the sync service always passes one — so null scope is safe in tests.
+        var facts = new PayrollFactProvider(db, null!, new AttendanceWageCalculator(db));
         return new AttendanceDeductionSyncService(db, facts, new AttendanceWageCalculator(db));
     }
 
@@ -885,6 +886,10 @@ git commit -m "feat(payroll-2d): AttendanceDeductionSyncService (idempotent per-
 - Consumes: `IAttendanceDeductionSyncService.SyncAsync`.
 - Produces: attendance records materialized + consumed within a single `CalculateAsync`.
 
+This is a **genuine `CalculateAsync` integration test** — it drives the real run engine end-to-end and asserts attendance records are materialized *by the engine* (not by a direct sync call). `CalculateAsync` reads its population from the pre-seeded `PayrollRunPopulation` rows and never calls `IScopeEngine` or `IPayrollValidationEngine`, so those two deps are safe to stub. It asserts **materialization** (an Approved attendance record exists after Calculate); Task 5 separately proves the retired rule no longer double-counts, so this test does not assert exact net.
+
+Engine ctors (verified): `RuleEngine(ApplicationDbContext)`, `PayrollValidationEngine(IEnumerable<IPayrollValidator>)`, `PayrollComputation(db, IPayrollFactProvider, IRuleEngine, IPayrollTransactionConsumer)`, `PayrollRunEngine(db, PayrollComputation, IPayrollValidationEngine, ICurrentUserService, IAuditLogService, IScopeEngine, IAttendanceDeductionSyncService)`.
+
 - [ ] **Step 1: Write the failing test** — `AttendanceDeductionRunTests.cs`
 
 ```csharp
@@ -897,7 +902,6 @@ using HR.Domain.Engines.MasterData;
 using HR.Domain.Entities;
 using HR.Domain.Enums;
 using HR.Infrastructure.Engines.Finance;
-using HR.Infrastructure.Engines.Scope;
 using HR.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
@@ -914,15 +918,34 @@ public class AttendanceDeductionRunTests
         public IReadOnlyList<string> Permissions { get; } = Array.Empty<string>();
         public bool IsAuthenticated => true;
     }
+    // Audit is invoked by CalculateAsync; a no-op fake keeps the test focused.
+    private sealed class FakeAudit : IAuditLogService
+    {
+        public Task LogAsync(string action, string entityType, Guid entityId, object? before, object? after, CancellationToken ct = default)
+            => Task.CompletedTask;
+    }
     private static ApplicationDbContext Ctx(string n) => new(
         new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(n).Options, new FakeUser());
     private static DateTime Utc(int y, int m, int d) => new(y, m, d, 0, 0, 0, DateTimeKind.Utc);
+
+    private static PayrollRunEngine Engine(ApplicationDbContext db)
+    {
+        var calc = new AttendanceWageCalculator(db);
+        var facts = new PayrollFactProvider(db, null!, calc); // scope unused: population is explicit
+        var computation = new PayrollComputation(db, facts, new RuleEngine(db), new PayrollTransactionConsumer(db));
+        var sync = new AttendanceDeductionSyncService(db, facts, calc);
+        return new PayrollRunEngine(db, computation,
+            new PayrollValidationEngine(Array.Empty<IPayrollValidator>()),
+            new FakeUser(), new FakeAudit(), null!, sync); // scope null!: CalculateAsync never calls it
+    }
 
     [Fact]
     public async Task Calculate_materializes_approved_attendance_records_even_without_sync_now()
     {
         await using var db = Ctx($"t-{Guid.NewGuid()}");
-        // Seed employee + deduction types.
+        var defId = await new StandardPayrollSeeder(db).EnsureStandardMonthlyAsync();
+        var version = await db.PayrollDefinitionVersions.FirstAsync(v => v.PayrollDefinitionId == defId);
+
         var emp = new Employee { EmployeeNumber = "E1", FirstName = "Ali", LastName = "S", Email = "a@t.local", BasicSalary = 3000m };
         db.Employees.Add(emp);
         foreach (var code in new[] { "ABSENCE", "LATE", "SHORTAGE" })
@@ -930,28 +953,30 @@ public class AttendanceDeductionRunTests
         db.AttendanceRecords.Add(new AttendanceRecord { EmployeeId = emp.Id, Date = Utc(2026,7,2), Status = AttendanceStatus.Absent });
         await db.SaveChangesAsync();
 
-        var version = new PayrollDefinitionVersion { DayBasis = DayBasis.Fixed30, CutoffDay = 27, CarryToNextPeriod = true, Currency = "SAR" };
-        var period = new PayrollPeriod(Utc(2026,7,1), Utc(2026,7,31));
-        var sync = new AttendanceDeductionSyncService(db,
-            new PayrollFactProvider(db, new ScopeEngine(db), new AttendanceWageCalculator(db)),
-            new AttendanceWageCalculator(db));
+        var run = new PayrollRun
+        {
+            RunNumber = "PR-TEST-1", PayrollDefinitionId = defId, PayrollDefinitionVersionId = version.Id,
+            RuleSetVersionId = version.RuleSetVersionId, PeriodStart = Utc(2026,7,1), PeriodEnd = Utc(2026,7,31),
+            State = PayrollRunState.Draft, Currency = "SAR",
+        };
+        db.PayrollRuns.Add(run);
+        db.PayrollRunPopulations.Add(new PayrollRunPopulation { PayrollRunId = run.Id, EmployeeId = emp.Id, IsIncluded = true });
+        await db.SaveChangesAsync();
 
-        // Act — the engine step the run drives (call the sync exactly as CalculateAsync will).
-        var report = await sync.SyncAsync(version, period, new[] { emp.Id }, default);
+        await Engine(db).CalculateAsync(run.Id);
 
-        report.Created.Should().Be(1);
         (await db.PayrollTransactions.CountAsync(t => t.SourceModule == "Attendance"
-            && t.Status == PayrollTransactionStatus.Approved)).Should().Be(1);
+            && t.Status == PayrollTransactionStatus.Approved && t.EmployeeId == emp.Id)).Should().Be(1);
     }
 }
 ```
 
-*(This test asserts the sync contract the engine invokes. A full run-engine integration test needs the rule-set/definition scaffolding used by existing run-engine tests — mirror `PayrollRunEngineTests` if present; keep this focused test as the regression guard for the wiring.)*
-
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `cd backend && dotnet test tests/HR.Domain.Finance.Tests --filter AttendanceDeductionRunTests`
-Expected: PASS at the service level (this guards the contract). Now wire the engine so the guarantee is real.
+Expected: FAIL — the test won't compile until `PayrollRunEngine`'s constructor takes `IAttendanceDeductionSyncService` (Step 3). After the ctor change but before Step 4's wiring, it compiles and FAILS the assertion (0 attendance records — Calculate doesn't yet materialize them). That is the genuine RED for this task.
+
+If `IAuditLogService.LogAsync`'s signature differs from the fake above, match it exactly (check `src/HR.Application/Common/Interfaces/IAuditLogService.cs`).
 
 - [ ] **Step 3: Inject the sync service into `PayrollRunEngine`**
 
