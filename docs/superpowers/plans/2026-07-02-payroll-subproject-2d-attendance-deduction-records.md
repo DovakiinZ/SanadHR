@@ -899,13 +899,16 @@ using HR.Domain.Engines.Attendance;
 using HR.Domain.Engines.Finance;
 using HR.Domain.Engines.Finance.Entities;
 using HR.Domain.Engines.MasterData;
-using HR.Domain.Entities;
+using HR.Modules.Employees.Entities;
 using HR.Domain.Enums;
 using HR.Infrastructure.Engines.Finance;
 using HR.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
 
+// NOTE: Employee lives in HR.Modules.Employees.Entities. IPayrollValidator / PayrollRun / PayrollRunPopulation
+// namespaces: resolve by searching if the compiler complains (they are HR.Application.Engines.Finance and
+// HR.Domain.Engines.Finance.Entities respectively).
 namespace HR.Domain.Finance.Tests;
 
 public class AttendanceDeductionRunTests
