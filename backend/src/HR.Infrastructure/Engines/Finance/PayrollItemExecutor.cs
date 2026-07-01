@@ -60,6 +60,8 @@ public sealed class PayrollItemExecutor
             payslip.LedgerPosted = true;
             payslip.LedgerPostedAt = DateTime.UtcNow;
             item.LedgerEntryCount = alreadyPosted ? item.LedgerEntryCount : postings.Count;
+            // 2C: flip consumed transactions to Posted (idempotent; runs on fresh + resumed executions).
+            await PostedTransactionStamper.StampAsync(_db, item.PayrollRunId, payslip.EmployeeId, ct);
             item.State = PayrollRunItemState.Completed;
             item.CompletedAt = DateTime.UtcNow;
             item.Error = null;

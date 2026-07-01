@@ -112,14 +112,7 @@ function Inner({ id }: { id: string }) {
             {run.payslips.length === 0 ? (
               <TableRow className="hover:bg-transparent"><TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">لا توجد قسائم — اضغط «احتساب»</TableCell></TableRow>
             ) : run.payslips.map((p) => (
-              <TableRow key={p.id} className="border-border hover:bg-card/50">
-                <TableCell className="font-medium">{p.employeeName}</TableCell>
-                <TableCell className="text-sm text-muted-foreground" dir="ltr">{p.employeeNumber}</TableCell>
-                <TableCell className="text-sm tabular-nums">{money(p.grossEarnings, p.currency)}</TableCell>
-                <TableCell className="text-sm tabular-nums">{money(p.totalDeductions, p.currency)}</TableCell>
-                <TableCell className="text-sm tabular-nums font-medium">{money(p.netAmount, p.currency)}</TableCell>
-                <TableCell>{p.ledgerPosted ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <span className="text-muted-foreground">—</span>}</TableCell>
-              </TableRow>
+              <PayslipRows key={p.id} payslip={p} currency={run.currency} />
             ))}
           </TableBody>
         </Table>
@@ -148,5 +141,58 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className={`mt-1 text-lg font-bold tabular-nums ${accent ? "text-primary" : ""}`}>{value}</div>
     </div>
+  );
+}
+
+interface PayslipComponent {
+  Code: string;
+  ComponentCode: string;
+  Kind?: number | null;
+  Amount: number;
+  Applied?: boolean;
+}
+
+function PayslipRows({ payslip: p, currency }: { payslip: import("@/lib/api/payroll").PayslipDto; currency: string }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const components: PayslipComponent[] = (() => {
+    if (!p.componentsJson) return [];
+    try {
+      const parsed = JSON.parse(p.componentsJson) as { components?: PayslipComponent[] };
+      return Array.isArray(parsed?.components) ? parsed.components : [];
+    } catch { return []; }
+  })();
+
+  const txnLines = components.filter((c) => c.Code?.startsWith("TXN:"));
+
+  return (
+    <>
+      <TableRow
+        className="border-border hover:bg-card/50 cursor-pointer"
+        onClick={() => txnLines.length > 0 && setExpanded((x) => !x)}
+      >
+        <TableCell className="font-medium">
+          {txnLines.length > 0 && (
+            <span className="mr-1 text-xs text-muted-foreground">{expanded ? "▼" : "▶"}</span>
+          )}
+          {p.employeeName}
+        </TableCell>
+        <TableCell className="text-sm text-muted-foreground" dir="ltr">{p.employeeNumber}</TableCell>
+        <TableCell className="text-sm tabular-nums">{money(p.grossEarnings, p.currency || currency)}</TableCell>
+        <TableCell className="text-sm tabular-nums">{money(p.totalDeductions, p.currency || currency)}</TableCell>
+        <TableCell className="text-sm tabular-nums font-medium">{money(p.netAmount, p.currency || currency)}</TableCell>
+        <TableCell>{p.ledgerPosted ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <span className="text-muted-foreground">—</span>}</TableCell>
+      </TableRow>
+      {expanded && txnLines.map((c, i) => (
+        <TableRow key={i} className="border-border bg-muted/30 hover:bg-muted/40">
+          <TableCell colSpan={2} className="pr-8 text-xs text-muted-foreground">
+            {c.ComponentCode || c.Code}
+          </TableCell>
+          <TableCell colSpan={4} className="text-xs tabular-nums text-muted-foreground">
+            {money(c.Amount, p.currency || currency)}
+          </TableCell>
+        </TableRow>
+      ))}
+    </>
   );
 }

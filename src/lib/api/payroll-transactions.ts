@@ -112,6 +112,26 @@ export function deleteTransaction(id: string): Promise<void> {
   return apiFetch<void>(`${BASE}/${id}`, { method: "DELETE" });
 }
 
+export function reverseTransaction(
+  id: string,
+  body: { reason: string; createCorrection: boolean; correctedAmount?: number },
+): Promise<PayrollTransaction> {
+  return apiFetch<PayrollTransaction>(`${BASE}/${id}/reverse`, { method: "POST", body });
+}
+
+export interface TransactionImpactPreview {
+  periodYear: number;
+  periodMonth: number;
+  cutoffDay: number;
+  carriedAfterCutoff: boolean;
+}
+
+export function getTransactionImpact(effectiveDate: string): Promise<TransactionImpactPreview> {
+  return apiFetch<TransactionImpactPreview>(
+    `${BASE}/impact-preview?effectiveDate=${encodeURIComponent(effectiveDate)}`,
+  );
+}
+
 export const TRANSACTION_STATUS_AR: Record<TransactionStatus, string> = {
   0: "مسودة", 1: "بانتظار الاعتماد", 2: "معتمد", 3: "مرفوض",
   4: "ملغى", 5: "مُرحّل", 6: "مُرحّل للسجل", 7: "معكوس",

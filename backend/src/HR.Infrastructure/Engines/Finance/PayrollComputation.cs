@@ -21,12 +21,15 @@ public sealed class PayrollComputation
     private readonly ApplicationDbContext _db;
     private readonly IPayrollFactProvider _facts;
     private readonly IRuleEngine _rules;
+    private readonly IPayrollTransactionConsumer _consumer;
 
-    public PayrollComputation(ApplicationDbContext db, IPayrollFactProvider facts, IRuleEngine rules)
+    public PayrollComputation(ApplicationDbContext db, IPayrollFactProvider facts, IRuleEngine rules,
+        IPayrollTransactionConsumer consumer)
     {
         _db = db;
         _facts = facts;
         _rules = rules;
+        _consumer = consumer;
     }
 
     public async Task<PayrollComputationResult> ComputeAsync(
@@ -71,6 +74,25 @@ public sealed class PayrollComputation
                         Array.Empty<ComponentResult>(), Array.Empty<string>(), 0m, 0m, 0m);
                 }
                 results.Add(new EmployeePayrollResult { Input = input, Evaluation = evaluation, Warnings = warnings });
+            }
+        }
+
+        // 2C: consume approved addition/deduction records as per-record components (read-only, used by
+        // both preview and calculate). PayrollTransaction is disjoint from EmployeeAdditions/Deductions,
+        // so these are additive — no double count.
+        if (results.Count > 0)
+        {
+            var empIds = results.Select(r => r.EmployeeId).ToList();
+            var consumables = await _consumer.GetConsumableAsync(
+                period.Year, period.Month, empIds, version.CutoffDay, version.CarryToNextPeriod, ct);
+            if (consumables.Count > 0)
+            {
+                var byEmp = consumables.GroupBy(c => c.EmployeeId).ToDictionary(g => g.Key, g => (IReadOnlyList<ConsumableTransaction>)g.ToList());
+                for (var i = 0; i < results.Count; i++)
+                {
+                    if (byEmp.TryGetValue(results[i].EmployeeId, out var txns))
+                        results[i] = results[i] with { Evaluation = PayrollTransactionMerge.Apply(results[i].Evaluation, txns) };
+                }
             }
         }
 

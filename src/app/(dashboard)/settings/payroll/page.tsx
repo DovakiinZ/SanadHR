@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Wallet, Coins, CreditCard, Users, ChevronLeft, LayoutList } from "lucide-react";
+import { ArrowRight, Wallet, Coins, CreditCard, Users, ChevronLeft, LayoutList, TrendingUp } from "lucide-react";
 
 const modules = [
   {
@@ -13,6 +13,12 @@ const modules = [
     title: "البدلات",
     description: "أنواع البدلات وقواعد الاحتساب (ثابت/نسبة)، الأساس، GOSI، الضريبة، السماح بالتجاوز",
     icon: Wallet,
+  },
+  {
+    href: "/settings/payroll/additions",
+    title: "الإضافات",
+    description: "أنواع الإضافات (مكافآت، عمولات، عمل إضافي، حوافز)",
+    icon: TrendingUp,
   },
   {
     href: "/settings/payroll/deductions",

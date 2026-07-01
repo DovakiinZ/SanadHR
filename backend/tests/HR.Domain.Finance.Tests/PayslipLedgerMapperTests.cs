@@ -75,4 +75,20 @@ public class PayslipLedgerMapperTests
         var p = Payslip(("ADJ", PayComponentKind.Deduction, 250m, true));
         PayslipLedgerMapper.Map(Guid.NewGuid(), p).Single().Amount.Should().Be(250m);
     }
+
+    [Fact]
+    public void Transaction_sourced_component_is_tagged_with_its_transaction_reference()
+    {
+        var txnId = Guid.NewGuid();
+        var payslip = Payslip(
+            ("BASIC", PayComponentKind.Earning, 1000m, true),
+            ($"TXN:{txnId:N}", PayComponentKind.Earning, 200m, true));
+
+        var postings = PayslipLedgerMapper.Map(Guid.NewGuid(), payslip);
+
+        var txnPosting = postings.Single(p => p.ReferenceType == "PayrollTransaction");
+        txnPosting.ReferenceId.Should().Be(txnId);
+        txnPosting.Amount.Should().Be(200m);
+        postings.Should().Contain(p => p.ReferenceType == "PayrollPayslip" && p.Amount == 1000m);
+    }
 }

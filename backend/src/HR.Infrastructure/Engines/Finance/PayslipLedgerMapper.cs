@@ -12,6 +12,7 @@ namespace HR.Infrastructure.Engines.Finance;
 public static class PayslipLedgerMapper
 {
     public const string PayslipReference = "PayrollPayslip";
+    public const string TransactionReference = "PayrollTransaction";
 
     public static List<LedgerPostingRequest> Map(Guid runId, PayrollPayslip payslip)
     {
@@ -39,6 +40,18 @@ public static class PayslipLedgerMapper
 
             var componentCode = c.TryGetProperty("ComponentCode", out var cc) ? cc.GetString() ?? "COMP" : "COMP";
 
+            var code = c.TryGetProperty("Code", out var cd) ? cd.GetString() : null;
+
+            var referenceType = PayslipReference;
+            Guid referenceId = payslip.Id;
+            if (code is not null
+                && code.StartsWith(PayrollTransactionMerge.ComponentCodePrefix, StringComparison.Ordinal)
+                && Guid.TryParseExact(code[PayrollTransactionMerge.ComponentCodePrefix.Length..], "N", out var txnId))
+            {
+                referenceType = TransactionReference;
+                referenceId = txnId;
+            }
+
             postings.Add(new LedgerPostingRequest
             {
                 EmployeeId = payslip.EmployeeId,
@@ -48,8 +61,8 @@ public static class PayslipLedgerMapper
                 Currency = payslip.Currency,
                 Direction = direction,
                 Description = $"Payroll {componentCode} for {payslip.EmployeeNumber}",
-                ReferenceType = PayslipReference,
-                ReferenceId = payslip.Id,
+                ReferenceType = referenceType,
+                ReferenceId = referenceId,
                 PayrollRunId = runId,
                 EntryNumber = $"PRL-{payslip.Id:N}-{index:D2}",
             });
