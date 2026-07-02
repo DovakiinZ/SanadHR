@@ -2,6 +2,7 @@ using HR.Application.Engines.Completion;
 using HR.Domain.Engines.Attendance;
 using HR.Domain.Enums;
 using HR.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 
 namespace HR.Modules.Attendance.Completion;
 
@@ -14,7 +15,7 @@ public sealed class AttendanceApplyLeaveDaysExecutor : IEffectExecutor
 
     public string EffectType => EffectTypes.AttendanceApplyLeaveDays;
 
-    public Task<EffectExecutionResult> ExecuteAsync(EffectContext ctx, CancellationToken ct)
+    public async Task<EffectExecutionResult> ExecuteAsync(EffectContext ctx, CancellationToken ct)
     {
         var start = ctx.Date("startDate") ?? throw new InvalidOperationException("startDate missing.");
         var end = ctx.Date("endDate") ?? throw new InvalidOperationException("endDate missing.");
@@ -22,20 +23,31 @@ public sealed class AttendanceApplyLeaveDaysExecutor : IEffectExecutor
         var count = 0;
         for (var d = start.Date; d <= end.Date; d = d.AddDays(1))
         {
-            _db.AttendanceRecords.Add(new AttendanceRecord
+            var day = DateTime.SpecifyKind(d, DateTimeKind.Utc);
+            var existing = await _db.AttendanceRecords.FirstOrDefaultAsync(
+                a => a.EmployeeId == ctx.EmployeeId && a.Date == day, ct);
+            if (existing is null)
             {
-                EmployeeId = ctx.EmployeeId,
-                Date = DateTime.SpecifyKind(d, DateTimeKind.Utc),
-                Status = AttendanceStatus.OnLeave,
-                Source = "LeaveRequest",
-                ReferenceId = ctx.RequestInstanceId,
-            });
+                _db.AttendanceRecords.Add(new AttendanceRecord
+                {
+                    EmployeeId = ctx.EmployeeId, Date = day, Status = AttendanceStatus.OnLeave,
+                    Source = "LeaveRequest", ReferenceId = ctx.RequestInstanceId,
+                });
+            }
+            else
+            {
+                existing.Status = AttendanceStatus.OnLeave;
+                existing.Source = "LeaveRequest";
+                existing.ReferenceId = ctx.RequestInstanceId;
+                existing.LateMinutes = 0;
+                existing.ShortageMinutes = 0;
+            }
             count++;
         }
 
-        return Task.FromResult(EffectExecutionResult.Ok(
+        return EffectExecutionResult.Ok(
             targetEntityType: "AttendanceRecord",
             after: new { onLeaveDays = count },
-            summary: $"Marked {count} day(s) OnLeave"));
+            summary: $"Marked {count} day(s) OnLeave");
     }
 }

@@ -31,6 +31,8 @@ public sealed class AttendanceCorrectionExecutor : IEffectExecutor
                 EmployeeId = ctx.EmployeeId,
                 Date = date,
                 Status = AttendanceStatus.Present,
+                LateMinutes = 0,
+                ShortageMinutes = 0,
                 Source = "AttendanceCorrection",
                 ReferenceId = ctx.RequestInstanceId,
                 Notes = reason,
@@ -41,6 +43,8 @@ public sealed class AttendanceCorrectionExecutor : IEffectExecutor
         else
         {
             existing.Status = AttendanceStatus.Present;
+            existing.LateMinutes = 0;
+            existing.ShortageMinutes = 0;
             existing.Source = "AttendanceCorrection";
             existing.Notes = reason;
             targetId = existing.Id;
