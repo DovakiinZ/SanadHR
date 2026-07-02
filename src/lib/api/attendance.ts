@@ -162,6 +162,23 @@ export function correctAttendance(id: string, body: CorrectAttendanceInput) {
   return apiFetch<unknown>(`/api/attendance/${id}/correct`, { method: "PUT", body });
 }
 
+export interface AttendancePayrollSyncReport {
+  created: number;
+  updated: number;
+  removed: number;
+  skippedPosted: number;
+  totalProcessed: number;
+}
+
+export function syncAttendancePayrollImpact(body: {
+  employeeId: string;
+  year: number;
+  month: number;
+  includeOvertime: boolean;
+}): Promise<AttendancePayrollSyncReport> {
+  return apiFetch<AttendancePayrollSyncReport>("/api/attendance/payroll-impact/sync", { method: "POST", body });
+}
+
 /** Download the attendance .xlsx. view = daily | range | weekly | monthly. */
 export async function exportAttendance(filters: AttendanceFilters, view: string): Promise<void> {
   const token = getAccessToken();
