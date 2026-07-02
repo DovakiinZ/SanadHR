@@ -35,6 +35,8 @@ public sealed class AttendancePayrollSyncService : IAttendancePayrollSyncService
         if (employeeIds.Count == 0 || !PayrollCalcSettings.IncludeAttendanceDeductions(version.CalcSettingsJson))
             return new AttendancePayrollSyncReport(0, 0, 0, 0, 0);
 
+        var rates = PayrollCalcSettings.Rates(version.CalcSettingsJson);
+
         // Resolve the DeductionType master-data ids by code (config errors surface clearly).
         var typeByKind = await ResolveTypesAsync(ct);
 
@@ -68,9 +70,9 @@ public sealed class AttendancePayrollSyncService : IAttendancePayrollSyncService
                 processed++;
                 var amount = kind switch
                 {
-                    AttendancePayrollKind.Absence => Math.Round(Dec(f, "AbsentDays") * dailyWage, 2),
-                    AttendancePayrollKind.Late => Math.Round(Dec(f, "LateHours") * hourlyWage, 2),
-                    AttendancePayrollKind.Shortage => Math.Round(Dec(f, "ShortageHours") * hourlyWage, 2),
+                    AttendancePayrollKind.Absence => Math.Round(Dec(f, "AbsentDays") * dailyWage * rates.Absence, 2),
+                    AttendancePayrollKind.Late => Math.Round(Dec(f, "LateHours") * hourlyWage * rates.Late, 2),
+                    AttendancePayrollKind.Shortage => Math.Round(Dec(f, "ShortageHours") * hourlyWage * rates.Shortage, 2),
                     _ => 0m,
                 };
                 var typeId = typeByKind[kind];
