@@ -25,7 +25,7 @@ public sealed class PayrollRunEngine : IPayrollRunEngine
     private readonly ICurrentUserService _currentUser;
     private readonly IAuditLogService _audit;
     private readonly IScopeEngine _scope;
-    private readonly IAttendanceDeductionSyncService _attendanceSync;
+    private readonly IAttendancePayrollSyncService _attendanceSync;
 
     public PayrollRunEngine(
         ApplicationDbContext db,
@@ -34,7 +34,7 @@ public sealed class PayrollRunEngine : IPayrollRunEngine
         ICurrentUserService currentUser,
         IAuditLogService audit,
         IScopeEngine scope,
-        IAttendanceDeductionSyncService attendanceSync)
+        IAttendancePayrollSyncService attendanceSync)
     {
         _db = db;
         _computation = computation;
@@ -119,7 +119,7 @@ public sealed class PayrollRunEngine : IPayrollRunEngine
             .Select(p => p.EmployeeId).ToListAsync(ct);
         // 2D: materialize attendance penalties into Approved deduction records for the frozen population so
         // they are consumed by the computation below (guaranteed even if "Sync Now" was never run).
-        await _attendanceSync.SyncAsync(version, period, frozen, ct);
+        await _attendanceSync.SyncAsync(version, period, frozen, ct: ct);
         var computation = await _computation.ComputeAsync(version, period, frozen, ct);
 
         // Re-snapshot: drop any prior payslips, write fresh immutable snapshots.

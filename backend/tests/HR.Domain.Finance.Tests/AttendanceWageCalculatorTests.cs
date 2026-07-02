@@ -56,8 +56,8 @@ public class AttendanceWageCalculatorTests
         var calc = new AttendanceWageCalculator(db);
         var rows = await calc.BreakdownRowsAsync(new[] { emp }, new PayrollPeriod(Utc(2026,7,1), Utc(2026,7,31)), default);
 
-        rows.Should().Contain(r => r.PenaltyKind == AttendancePenaltyKind.Late && r.Minutes == 30);
-        rows.Should().Contain(r => r.PenaltyKind == AttendancePenaltyKind.Absence && r.Days == 1);
-        rows.Should().Contain(r => r.PenaltyKind == AttendancePenaltyKind.Shortage && r.Minutes == 60);
+        rows.Should().Contain(r => r.PenaltyKind == AttendancePayrollKind.Late && r.Minutes == 30);
+        rows.Should().Contain(r => r.PenaltyKind == AttendancePayrollKind.Absence && r.Days == 1);
+        rows.Should().Contain(r => r.PenaltyKind == AttendancePayrollKind.Shortage && r.Minutes == 60);
     }
 }

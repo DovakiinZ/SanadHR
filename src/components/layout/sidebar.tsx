@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/tooltip";
 import { logout } from "@/lib/api/auth";
 import { getMyApprovals } from "@/lib/api/approvals";
+import { PalmMark } from "@/components/brand/sanad-logo";
 
 const navItems = [
   { label: "لوحة التحكم", href: "/dashboard", icon: LayoutDashboard },
@@ -63,10 +64,9 @@ export function Sidebar() {
   return (
     <aside className="fixed top-0 right-0 z-40 h-screen w-16 border-l border-border bg-secondary flex flex-col items-center py-4">
       {/* Logo */}
-      <Link href="/dashboard" className="mb-6 flex w-14 items-center justify-center" aria-label="سند">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/sanad-logo.svg" alt="سند" className="h-auto w-full" />
-      </Link>
+      <div className="mb-6 flex h-10 w-10 items-center justify-center bg-primary">
+        <PalmMark size={22} className="text-primary-foreground" />
+      </div>
 
       {/* Nav */}
       <nav className="flex flex-1 flex-col items-center gap-1">

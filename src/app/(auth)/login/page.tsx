@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { login } from "@/lib/api/auth";
 import { ApiError } from "@/lib/api-client";
+import { SanadLogo } from "@/components/brand/sanad-logo";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -46,9 +47,10 @@ export default function LoginPage() {
     <div className="border border-border bg-card p-8">
       {/* Logo */}
       <div className="mb-8 text-center">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/sanad-logo.svg" alt="سند" className="mx-auto mb-3 h-14 w-auto" />
-        <p className="text-sm text-muted-foreground mt-2">نظام إدارة الموارد البشرية</p>
+        <div className="mb-3 flex justify-center">
+          <SanadLogo size={40} />
+        </div>
+        <p className="text-sm text-muted-foreground mt-1">نظام إدارة الموارد البشرية</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
