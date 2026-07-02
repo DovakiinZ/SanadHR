@@ -14,6 +14,7 @@ import { getEmployees } from "@/lib/api/employees";
 import { listShifts, type Shift } from "@/lib/api/shifts";
 import {
   getDailyAttendance, getWeeklyAttendance, getMonthlyAttendance, exportAttendance,
+  syncAttendancePayrollImpact,
   fmtMinutes, fmtTime,
   ATTENDANCE_STATUS_AR, ATTENDANCE_STATUS_STYLE, ATTENDANCE_SOURCE_AR,
   type AttendanceFilters, type AttendanceDay, type AttendanceSummary, type AttendanceKpi,
@@ -57,9 +58,16 @@ export default function AttendancePage() {
   const { hasAny } = usePermissions();
   const canEdit = hasAny("Attendance.Edit", "Attendance.Create");
   const canExport = hasAny("Attendance.Export", "Attendance.View");
+  const canPayrollImpact = hasAny("Attendance.PayrollImpact.Create");
 
   const [view, setView] = useState<View>("daily");
   const [anchor, setAnchor] = useState<string>(todayIso());
+
+  // Target month for payroll impact sync (defaults to the currently viewed month)
+  const payrollMonth = useMemo(() => {
+    const d = new Date(anchor);
+    return { year: d.getFullYear(), month: d.getMonth() + 1 };
+  }, [anchor]);
   const [filters, setFilters] = useState<AttendanceFilters>({});
   const [showFilters, setShowFilters] = useState(false);
 
@@ -245,7 +253,7 @@ export default function AttendancePage() {
       {loading ? (
         <div className="flex h-64 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
       ) : view === "daily" ? (
-        <DailyTable rows={dayRows} canEdit={canEdit} onView={setDrawerRow} onPunch={setPunch} />
+        <DailyTable rows={dayRows} canEdit={canEdit} canPayrollImpact={canPayrollImpact} payrollYear={payrollMonth.year} payrollMonth={payrollMonth.month} onView={setDrawerRow} onPunch={setPunch} />
       ) : (
         <SummaryTable rows={summaryRows} />
       )}
@@ -265,13 +273,29 @@ export default function AttendancePage() {
 }
 
 function DailyTable({
-  rows, canEdit, onView, onPunch,
+  rows, canEdit, canPayrollImpact, payrollYear, payrollMonth, onView, onPunch,
 }: {
   rows: AttendanceDay[];
   canEdit: boolean;
+  canPayrollImpact: boolean;
+  payrollYear: number;
+  payrollMonth: number;
   onView: (r: AttendanceDay) => void;
   onPunch: (p: { mode: "manual" | "correct"; row: AttendanceDay }) => void;
 }) {
+  async function syncImpact(row: AttendanceDay, includeOvertime: boolean) {
+    try {
+      const r = await syncAttendancePayrollImpact({
+        employeeId: row.employeeId,
+        year: payrollYear,
+        month: payrollMonth,
+        includeOvertime,
+      });
+      toast.success(`تم الاحتساب — أُنشئ ${r.created}، حُدِّث ${r.updated}، أُزيل ${r.removed}، تجاوز ${r.skippedPosted}`);
+    } catch {
+      // errors already toasted by apiFetch
+    }
+  }
   if (rows.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center border border-dashed border-border p-12 text-center">
@@ -321,6 +345,22 @@ function DailyTable({
                   <Button variant="ghost" size="icon-xs" title="عرض التفاصيل" onClick={() => onView(r)}><Eye /></Button>
                   {canEdit && <Button variant="ghost" size="icon-xs" title="بصمة يدوية" onClick={() => onPunch({ mode: "manual", row: r })}><Plus /></Button>}
                   {canEdit && r.recordId && <Button variant="ghost" size="icon-xs" title="تصحيح" onClick={() => onPunch({ mode: "correct", row: r })}><Pencil /></Button>}
+                  {canPayrollImpact && (
+                    <>
+                      <Button variant="ghost" size="icon-xs" title="احتساب خصم الغياب" onClick={() => syncImpact(r, false)}>
+                        <UserX className="h-3.5 w-3.5 text-red-500" />
+                      </Button>
+                      <Button variant="ghost" size="icon-xs" title="احتساب خصم التأخير" onClick={() => syncImpact(r, false)}>
+                        <AlarmClock className="h-3.5 w-3.5 text-amber-500" />
+                      </Button>
+                      <Button variant="ghost" size="icon-xs" title="احتساب خصم النقص" onClick={() => syncImpact(r, false)}>
+                        <TimerReset className="h-3.5 w-3.5 text-yellow-600" />
+                      </Button>
+                      <Button variant="ghost" size="icon-xs" title="احتساب إضافة الوقت الإضافي" onClick={() => syncImpact(r, true)}>
+                        <TrendingUp className="h-3.5 w-3.5 text-indigo-500" />
+                      </Button>
+                    </>
+                  )}
                 </div>
               </td>
             </tr>

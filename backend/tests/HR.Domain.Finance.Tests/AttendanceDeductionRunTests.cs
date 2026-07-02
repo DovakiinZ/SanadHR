@@ -42,7 +42,7 @@ public class AttendanceDeductionRunTests
         var calc = new AttendanceWageCalculator(db);
         var facts = new PayrollFactProvider(db, null!, calc); // scope unused: population is explicit
         var computation = new PayrollComputation(db, facts, new RuleEngine(db), new PayrollTransactionConsumer(db));
-        var sync = new AttendanceDeductionSyncService(db, facts, calc);
+        var sync = new AttendancePayrollSyncService(db, facts, calc);
         return new PayrollRunEngine(db, computation,
             new PayrollValidationEngine(Array.Empty<IPayrollValidator>()),
             new FakeUser(), new FakeAudit(), null!, sync); // scope null!: CalculateAsync never calls it

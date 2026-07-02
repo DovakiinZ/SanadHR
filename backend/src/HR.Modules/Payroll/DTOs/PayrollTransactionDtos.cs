@@ -45,7 +45,7 @@ public sealed class SyncAttendanceDeductionsRequest
     public List<Guid>? EmployeeIds { get; set; }
 }
 
-public sealed record AttendanceDeductionSyncReportDto(
+public sealed record AttendancePayrollSyncReportDto(
     int Created, int Updated, int Removed, int SkippedPosted, int TotalProcessed);
 
 public sealed record AttendanceBreakdownDto(

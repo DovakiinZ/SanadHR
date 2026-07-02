@@ -32,12 +32,12 @@ public class AttendanceReferenceEntityTests
         {
             PayrollTransactionId = txnId, AttendanceRecordId = recId,
             Date = new DateTime(2026, 7, 5, 0, 0, 0, DateTimeKind.Utc),
-            PenaltyKind = AttendancePenaltyKind.Late, Minutes = 30, Days = 0, AmountContribution = 12.5m,
+            PenaltyKind = AttendancePayrollKind.Late, Minutes = 30, Days = 0, AmountContribution = 12.5m,
         });
         await db.SaveChangesAsync();
 
         var row = await db.PayrollTransactionAttendanceReferences.SingleAsync(r => r.PayrollTransactionId == txnId);
-        row.PenaltyKind.Should().Be(AttendancePenaltyKind.Late);
+        row.PenaltyKind.Should().Be(AttendancePayrollKind.Late);
         row.AmountContribution.Should().Be(12.5m);
     }
 }

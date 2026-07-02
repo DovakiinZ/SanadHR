@@ -10,7 +10,7 @@ namespace HR.Infrastructure.Engines.Finance;
 public sealed record AttendanceAggregate(int Days, int OvertimeMinutes, int LateMinutes, int AbsentDays, int ShortageMinutes);
 
 public sealed record AttendanceBreakdownRow(
-    Guid EmployeeId, Guid AttendanceRecordId, DateTime Date, AttendancePenaltyKind PenaltyKind, int Minutes, int Days);
+    Guid EmployeeId, Guid AttendanceRecordId, DateTime Date, AttendancePayrollKind PenaltyKind, int Minutes, int Days);
 
 public sealed class AttendanceWageCalculator
 {
@@ -47,7 +47,7 @@ public sealed class AttendanceWageCalculator
         if (employeeIds.Count == 0) return Array.Empty<AttendanceBreakdownRow>();
         var days = await _db.AttendanceRecords.AsNoTracking()
             .Where(a => employeeIds.Contains(a.EmployeeId) && a.Date >= period.Start && a.Date <= period.End)
-            .Select(a => new { a.Id, a.EmployeeId, a.Date, a.Status, a.LateMinutes, a.ShortageMinutes })
+            .Select(a => new { a.Id, a.EmployeeId, a.Date, a.Status, a.LateMinutes, a.ShortageMinutes, a.OvertimeMinutes })
             .ToListAsync(ct);
 
         var rows = new List<AttendanceBreakdownRow>();
@@ -55,13 +55,15 @@ public sealed class AttendanceWageCalculator
         {
             if (d.Status == AttendanceStatus.Absent)
             {
-                rows.Add(new AttendanceBreakdownRow(d.EmployeeId, d.Id, d.Date, AttendancePenaltyKind.Absence, 0, 1));
+                rows.Add(new AttendanceBreakdownRow(d.EmployeeId, d.Id, d.Date, AttendancePayrollKind.Absence, 0, 1));
                 continue; // shortage on an absent day is not double-counted
             }
             if (d.LateMinutes > 0)
-                rows.Add(new AttendanceBreakdownRow(d.EmployeeId, d.Id, d.Date, AttendancePenaltyKind.Late, d.LateMinutes, 0));
+                rows.Add(new AttendanceBreakdownRow(d.EmployeeId, d.Id, d.Date, AttendancePayrollKind.Late, d.LateMinutes, 0));
             if (d.ShortageMinutes > 0)
-                rows.Add(new AttendanceBreakdownRow(d.EmployeeId, d.Id, d.Date, AttendancePenaltyKind.Shortage, d.ShortageMinutes, 0));
+                rows.Add(new AttendanceBreakdownRow(d.EmployeeId, d.Id, d.Date, AttendancePayrollKind.Shortage, d.ShortageMinutes, 0));
+            if (d.OvertimeMinutes > 0)
+                rows.Add(new AttendanceBreakdownRow(d.EmployeeId, d.Id, d.Date, AttendancePayrollKind.Overtime, d.OvertimeMinutes, 0));
         }
         return rows;
     }

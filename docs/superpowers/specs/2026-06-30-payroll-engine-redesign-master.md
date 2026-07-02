@@ -79,6 +79,28 @@ The Financial Engine is mature and is the substrate everything builds on:
 
 Each sub-project: brainstorm → spec → writing-plans → implement → verify → ship.
 
+### Progress + roadmap expansion (2026-07-02)
+
+Shipped: **1** (types/scope/cutoff), **2A** (transaction records), **2C** (consume/post/
+reverse), **2D** (attendance→deduction records — deployed). The "Payroll Run Operations
+Enhancement" requirements (payslips, run void/amend/reissue, run-page quick actions,
+daily attendance actions + overtime + excuse, exports, new permissions, audit-origin)
+are captured and mapped to sub-projects in
+`2026-07-02-payroll-run-operations-enhancement-ROADMAP.md`. Expanded decomposition:
+
+- **2E** — Attendance daily payroll actions + Overtime→Addition + approved-excuse
+  trigger (extends 2D).
+- **3** — Run engine wiring + run details + run-page quick actions (Add Addition/
+  Deduction/Attendance-Deduction/Overtime); closes diagnosis bug #4 (run-state guard).
+- **4** — Payslips (per-item PDF: preview/print/download/store-in-documents).
+- **5** — Exports (Excel/PDF now; CSV/TXT later; summary/detailed/payslips/additions/
+  deductions/attendance-impact/excluded reports; IBAN behind permission).
+- **6** — Run Void / Amend / Reissue (post-approval controlled change; new statuses
+  Voided/Amending/Reissued; old run immutable, new run references it).
+
+Suggested order: 2E → 3 → 4 → 5 → 6. New permissions + audit-origin fold into whichever
+sub-project introduces the action.
+
 ## Acceptance (whole programme — from the original spec)
 
 Admin creates a Payroll Type (Monthly), sets cutoff = 27, creates a run for a

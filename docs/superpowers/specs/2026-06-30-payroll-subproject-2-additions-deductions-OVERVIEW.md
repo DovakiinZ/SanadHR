@@ -63,3 +63,229 @@ POST /api/payroll/deductions
 ## Out of scope (later sub-projects)
 - Excluded-employees reasons, KPI cards, full run-details table, lifecycle timeline (sub-project 3).
 - Payslip PDFs (sub-project 4). Exports (sub-project 5).
+## Additional Enterprise Design Requirements
+
+The following requirements are mandatory additions to the Sub-project 2 specification.
+
+### 1. Transaction Lifecycle
+
+Every `PayrollAddition` and `PayrollDeduction` must implement a complete lifecycle rather than only an approval status.
+
+Suggested lifecycle:
+
+* Draft
+* PendingApproval
+* Approved
+* Rejected
+* Cancelled
+* CarriedForward
+* Posted
+* Reversed
+
+Once a transaction reaches **Posted**, it becomes immutable.
+
+---
+
+### 2. Posting Metadata
+
+When a payroll run posts transactions, every posted addition/deduction must store:
+
+* PayrollRunId
+* PostedAt
+* PostedBy
+* LedgerEntryId
+
+This creates a complete audit chain from payroll transaction to financial ledger.
+
+---
+
+### 3. Reversal Model (No Editing Posted Transactions)
+
+Posted payroll transactions must never be edited.
+
+Corrections are performed using reversals.
+
+Example:
+
+Deduction 100 SAR
+
+↓
+
+Reverse -100 SAR
+
+↓
+
+Create new deduction 80 SAR
+
+This preserves auditability and financial integrity.
+
+---
+
+### 7. Payroll Impact Preview
+
+Every addition/deduction should display the payroll period that will consume it.
+
+Example:
+
+Will affect:
+July 2026 Payroll
+
+Reason:
+Before payroll cutoff.
+
+or
+
+Will affect:
+August 2026 Payroll
+
+Reason:
+Created after cutoff.
+
+---
+
+### 9. Duplicate / Conflict Detection
+
+Before approval, the system should automatically detect possible duplicate payroll transactions.
+
+Comparison should consider:
+
+* Employee
+* Source Module
+* ReferenceId
+* Amount
+* Effective Date
+* Transaction Type
+
+Possible duplicates should be presented as warnings rather than silently accepted.
+
+---
+
+### 11. Common Payroll Transaction Abstraction
+
+Payroll should not consume unrelated entities individually.
+
+Introduce a common abstraction:
+
+IPayrollTransaction
+
+implemented by:
+
+* PayrollAddition
+* PayrollDeduction
+* Loan Installment
+* Attendance Penalty
+* Expense
+* Overtime
+* Commission
+* Bonus
+
+This allows future payroll sources without modifying the payroll engine.
+
+---
+
+### 12. Transaction Priority
+
+Transactions should support configurable execution priority.
+
+Example priority:
+
+1. Government deductions
+2. Court orders
+3. Loans
+4. Attendance deductions
+5. Manual deductions
+6. Optional deductions
+
+The payroll engine must process transactions according to priority.
+
+---
+
+### 14. Effective Dating
+
+Separate business dates instead of using a single Date field.
+
+Every payroll transaction should include:
+
+* TransactionDate
+* EffectiveDate
+* CreatedAt
+
+Business calculations must use EffectiveDate.
+
+---
+
+### 15. Attachment Metadata
+
+Attachments should include metadata in addition to the file reference.
+
+Required metadata:
+
+* UploadedBy
+* UploadedAt
+* AttachmentCategory
+* DocumentNumber
+
+This improves auditing and compliance.
+
+---
+
+### 16. Batch Import
+
+Support enterprise bulk operations.
+
+The additions/deductions module must support:
+
+* Excel Import
+* Validation
+* Preview
+* Approval
+* Bulk Creation
+
+No imported records should bypass validation.
+
+---
+
+### 17. Immutable Payroll Posting
+
+When payroll execution completes, all consumed payroll transactions become permanently locked.
+
+Transactions may no longer be:
+
+* Edited
+* Deleted
+* Re-approved
+
+Only reversal transactions may modify historical payroll.
+
+---
+
+### 19. Historical Traceability
+
+Each payroll transaction must always preserve its original business information.
+
+The system must never overwrite:
+
+* Original Transaction Date
+* Original Source
+* Original Reference
+
+Carry-forward should never rewrite historical data.
+
+---
+
+### 20. Payroll Audit & Explainability
+
+Every payroll transaction should expose complete explainability.
+
+The audit should answer:
+
+* Why was this transaction created?
+* Which module created it?
+* Which user approved it?
+* Which payroll consumed it?
+* Which ledger entry was generated?
+* Was it carried forward?
+* Was it reversed?
+* Which document or attendance record caused it?
+
+The objective is full end-to-end traceability from the originating business event to the final payroll posting.

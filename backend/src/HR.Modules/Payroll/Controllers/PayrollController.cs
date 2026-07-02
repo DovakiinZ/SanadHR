@@ -35,12 +35,12 @@ public class PayrollController : BaseApiController
     private readonly IScopeEngine _scope;
     private readonly IPayrollTransactionService _transactions;
     private readonly IPayrollTransactionReversalService _reversals;
-    private readonly IAttendanceDeductionSyncService _attendanceSync;
+    private readonly IAttendancePayrollSyncService _attendanceSync;
 
     public PayrollController(ApplicationDbContext db, IPayrollRunEngine runEngine, IPayrollPreviewEngine previewEngine,
         IPayrollExecutionScheduler scheduler, IStandardPayrollSeeder seeder,
         IPayrollTypeService types, IScopeEngine scope, IPayrollTransactionService transactions,
-        IPayrollTransactionReversalService reversals, IAttendanceDeductionSyncService attendanceSync)
+        IPayrollTransactionReversalService reversals, IAttendancePayrollSyncService attendanceSync)
     {
         _db = db;
         _runEngine = runEngine;
@@ -432,7 +432,7 @@ public class PayrollController : BaseApiController
 
     [HttpPost("attendance-deductions/sync")]
     [RequirePermission("Payroll.Configure")]
-    public async Task<ActionResult<ApiResponse<AttendanceDeductionSyncReportDto>>> SyncAttendanceDeductions(
+    public async Task<ActionResult<ApiResponse<AttendancePayrollSyncReportDto>>> SyncAttendanceDeductions(
         [FromBody] SyncAttendanceDeductionsRequest req, CancellationToken ct)
     {
         var versionId = await ResolveVersionAsync(req.DefinitionId, ct);
@@ -443,8 +443,8 @@ public class PayrollController : BaseApiController
             ? req.EmployeeIds
             : (await _scope.ResolveAsync(SelectionScopeJson.Parse(version.SelectionScopeJson), ct)).IncludedEmployeeIds.ToList();
 
-        var report = await _attendanceSync.SyncAsync(version, PayrollPeriod.Monthly(req.Year, req.Month), employeeIds, ct);
-        return OkResponse(new AttendanceDeductionSyncReportDto(
+        var report = await _attendanceSync.SyncAsync(version, PayrollPeriod.Monthly(req.Year, req.Month), employeeIds, ct: ct);
+        return OkResponse(new AttendancePayrollSyncReportDto(
             report.Created, report.Updated, report.Removed, report.SkippedPosted, report.TotalProcessed),
             $"Synced {report.TotalProcessed} attendance line(s).");
     }

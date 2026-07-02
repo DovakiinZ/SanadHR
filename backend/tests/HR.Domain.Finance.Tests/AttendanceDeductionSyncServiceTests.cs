@@ -15,7 +15,7 @@ using Xunit;
 
 namespace HR.Domain.Finance.Tests;
 
-public class AttendanceDeductionSyncServiceTests
+public class AttendancePayrollSyncServiceTests
 {
     private sealed class FakeUser : ICurrentUserService
     {
@@ -29,12 +29,12 @@ public class AttendanceDeductionSyncServiceTests
         new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(n).Options, new FakeUser());
     private static DateTime Utc(int y, int m, int d) => new(y, m, d, 0, 0, 0, DateTimeKind.Utc);
 
-    private static AttendanceDeductionSyncService Svc(ApplicationDbContext db)
+    private static AttendancePayrollSyncService Svc(ApplicationDbContext db)
     {
         // PayrollFactProvider never dereferences IScopeEngine when an explicit employee population is passed
         // (BuildInputsAsync:41), and the sync service always passes one — so null scope is safe in tests.
         var facts = new PayrollFactProvider(db, null!, new AttendanceWageCalculator(db));
-        return new AttendanceDeductionSyncService(db, facts, new AttendanceWageCalculator(db));
+        return new AttendancePayrollSyncService(db, facts, new AttendanceWageCalculator(db));
     }
 
     // Seeds an employee (30-day-basis daily wage = 3000/30 = 100/day, hourly = 12.5) + the 3 deduction types.

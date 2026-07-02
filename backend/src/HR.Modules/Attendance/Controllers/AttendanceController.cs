@@ -1,12 +1,26 @@
 using HR.Api.Controllers;
 using HR.Api.Filters;
+using HR.Application.Common.Exceptions;
 using HR.Application.Common.Models;
+using HR.Application.Engines.Finance;
+using HR.Domain.Engines.Finance;
+using HR.Domain.Enums;
+using HR.Infrastructure.Persistence;
 using HR.Modules.Attendance.DTOs;
 using HR.Modules.Attendance.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace HR.Modules.Attendance.Controllers;
+
+public sealed class SyncAttendancePayrollImpactRequest
+{
+    public Guid EmployeeId { get; set; }
+    public int Year { get; set; }
+    public int Month { get; set; }
+    public bool IncludeOvertime { get; set; }
+}
 
 /// <summary>Full daily/weekly/monthly attendance engine for all employees. Rows are computed
 /// server-side from live punches + the resolved shift; approved leave / missing-punch / correction
@@ -16,7 +30,12 @@ namespace HR.Modules.Attendance.Controllers;
 public class AttendanceController : BaseApiController
 {
     private readonly IAttendanceService _svc;
-    public AttendanceController(IAttendanceService svc) { _svc = svc; }
+    private readonly IAttendancePayrollSyncService _payrollSync;
+    private readonly ApplicationDbContext _db;
+    public AttendanceController(IAttendanceService svc,
+        IAttendancePayrollSyncService payrollSync,
+        ApplicationDbContext db)
+    { _svc = svc; _payrollSync = payrollSync; _db = db; }
 
     public sealed class AttendanceQuery
     {
@@ -125,6 +144,23 @@ public class AttendanceController : BaseApiController
         else { rFrom = rTo = q.Date is { } d ? Utc(d) : Today; }
         var rows = await _svc.GetRangeRowsAsync(q.ToFilter(), rFrom, rTo, ct);
         return File(AttendanceExporter.ExportRows(rows), mime, $"attendance-{stamp}.xlsx");
+    }
+
+    [HttpPost("payroll-impact/sync")]
+    [RequirePermission("Attendance.PayrollImpact.Create")]
+    public async Task<ActionResult<ApiResponse<AttendancePayrollSyncReport>>> SyncPayrollImpact(
+        [FromBody] SyncAttendancePayrollImpactRequest req, CancellationToken ct)
+    {
+        var version = await _db.PayrollDefinitionVersions.AsNoTracking()
+            .Where(v => v.Status == VersionStatus.Published)
+            .OrderByDescending(v => v.CreatedAt)
+            .FirstOrDefaultAsync(ct)
+            ?? throw new DomainException("No published payroll version is available.");
+
+        var report = await _payrollSync.SyncAsync(
+            version, PayrollPeriod.Monthly(req.Year, req.Month),
+            new[] { req.EmployeeId }, includeOvertime: req.IncludeOvertime, ct: ct);
+        return OkResponse(report, $"Synced {report.TotalProcessed} attendance line(s) for the employee.");
     }
 
     // ── range helpers ──

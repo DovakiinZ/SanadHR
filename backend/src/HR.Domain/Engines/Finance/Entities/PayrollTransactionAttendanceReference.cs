@@ -17,7 +17,7 @@ public class PayrollTransactionAttendanceReference : TenantEntity
     /// <summary>Snapshot of the attendance date.</summary>
     public DateTime Date { get; set; }
 
-    public AttendancePenaltyKind PenaltyKind { get; set; }
+    public AttendancePayrollKind PenaltyKind { get; set; }
 
     /// <summary>Late/shortage minutes for this day (0 for absence).</summary>
     public int Minutes { get; set; }
