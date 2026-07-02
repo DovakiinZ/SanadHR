@@ -47,7 +47,7 @@ public sealed class AttendanceWageCalculator
         if (employeeIds.Count == 0) return Array.Empty<AttendanceBreakdownRow>();
         var days = await _db.AttendanceRecords.AsNoTracking()
             .Where(a => employeeIds.Contains(a.EmployeeId) && a.Date >= period.Start && a.Date <= period.End)
-            .Select(a => new { a.Id, a.EmployeeId, a.Date, a.Status, a.LateMinutes, a.ShortageMinutes })
+            .Select(a => new { a.Id, a.EmployeeId, a.Date, a.Status, a.LateMinutes, a.ShortageMinutes, a.OvertimeMinutes })
             .ToListAsync(ct);
 
         var rows = new List<AttendanceBreakdownRow>();
@@ -62,6 +62,8 @@ public sealed class AttendanceWageCalculator
                 rows.Add(new AttendanceBreakdownRow(d.EmployeeId, d.Id, d.Date, AttendancePayrollKind.Late, d.LateMinutes, 0));
             if (d.ShortageMinutes > 0)
                 rows.Add(new AttendanceBreakdownRow(d.EmployeeId, d.Id, d.Date, AttendancePayrollKind.Shortage, d.ShortageMinutes, 0));
+            if (d.OvertimeMinutes > 0)
+                rows.Add(new AttendanceBreakdownRow(d.EmployeeId, d.Id, d.Date, AttendancePayrollKind.Overtime, d.OvertimeMinutes, 0));
         }
         return rows;
     }

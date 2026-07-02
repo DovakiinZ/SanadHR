@@ -14,11 +14,12 @@ public sealed class AttendancePayrollSyncService : IAttendancePayrollSyncService
     private const string Source = "Attendance";
     private const string RefType = "AttendancePeriodPenalty";
 
-    private static readonly (AttendancePayrollKind Kind, string Code)[] KindCodes =
+    private static readonly (AttendancePayrollKind Kind, string Code, string ObjectType, PayrollTransactionKind TxnKind)[] KindSpecs =
     {
-        (AttendancePayrollKind.Absence, "ABSENCE"),
-        (AttendancePayrollKind.Late, "LATE"),
-        (AttendancePayrollKind.Shortage, "SHORTAGE"),
+        (AttendancePayrollKind.Absence,  "ABSENCE",  MasterDataObjectType.DeductionType, PayrollTransactionKind.Deduction),
+        (AttendancePayrollKind.Late,     "LATE",     MasterDataObjectType.DeductionType, PayrollTransactionKind.Deduction),
+        (AttendancePayrollKind.Shortage, "SHORTAGE", MasterDataObjectType.DeductionType, PayrollTransactionKind.Deduction),
+        (AttendancePayrollKind.Overtime, "OVERTIME", MasterDataObjectType.AdditionType,  PayrollTransactionKind.Addition),
     };
 
     private readonly ApplicationDbContext _db;
@@ -32,13 +33,15 @@ public sealed class AttendancePayrollSyncService : IAttendancePayrollSyncService
         PayrollDefinitionVersion version, PayrollPeriod period,
         IReadOnlyCollection<Guid> employeeIds, bool? includeOvertime = null, CancellationToken ct = default)
     {
-        if (employeeIds.Count == 0 || !PayrollCalcSettings.IncludeAttendanceDeductions(version.CalcSettingsJson))
+        var includeDed = PayrollCalcSettings.IncludeAttendanceDeductions(version.CalcSettingsJson);
+        var includeOt = includeOvertime ?? PayrollCalcSettings.IncludeOvertime(version.CalcSettingsJson);
+        if (employeeIds.Count == 0 || (!includeDed && !includeOt))
             return new AttendancePayrollSyncReport(0, 0, 0, 0, 0);
 
         var rates = PayrollCalcSettings.Rates(version.CalcSettingsJson);
 
-        // Resolve the DeductionType master-data ids by code (config errors surface clearly).
-        var typeByKind = await ResolveTypesAsync(ct);
+        // Resolve the master-data ids by code (now includes AdditionType for overtime).
+        var typeByKind = await ResolveTypesAsync(includeDed, includeOt, ct); // returns (Guid TypeId, PayrollTransactionKind TxnKind)
 
         // Wages + aggregate penalty inputs, straight from the fact provider (identical to the retired rule).
         var inputs = await _facts.BuildInputsAsync(version, period, employeeIds, ct);
@@ -65,17 +68,22 @@ public sealed class AttendancePayrollSyncService : IAttendancePayrollSyncService
             var dailyWage = Dec(f, "DailyWage");
             var hourlyWage = Dec(f, "HourlyWage");
 
-            foreach (var (kind, code) in KindCodes)
+            foreach (var spec in KindSpecs)
             {
+                var kind = spec.Kind;
+                var enabled = kind == AttendancePayrollKind.Overtime ? includeOt : includeDed;
+                if (!enabled) continue;
                 processed++;
+
                 var amount = kind switch
                 {
-                    AttendancePayrollKind.Absence => Math.Round(Dec(f, "AbsentDays") * dailyWage * rates.Absence, 2),
-                    AttendancePayrollKind.Late => Math.Round(Dec(f, "LateHours") * hourlyWage * rates.Late, 2),
+                    AttendancePayrollKind.Absence  => Math.Round(Dec(f, "AbsentDays")   * dailyWage  * rates.Absence, 2),
+                    AttendancePayrollKind.Late     => Math.Round(Dec(f, "LateHours")     * hourlyWage * rates.Late, 2),
                     AttendancePayrollKind.Shortage => Math.Round(Dec(f, "ShortageHours") * hourlyWage * rates.Shortage, 2),
+                    AttendancePayrollKind.Overtime => Math.Round(Dec(f, "OvertimeHours") * hourlyWage * rates.Overtime, 2),
                     _ => 0m,
                 };
-                var typeId = typeByKind[kind];
+                var (typeId, txnKind) = typeByKind[kind];
                 existingByKey.TryGetValue((empId, typeId), out var txn);
 
                 if (txn is { Status: PayrollTransactionStatus.Posted } or { Status: PayrollTransactionStatus.Reversed })
@@ -86,7 +94,7 @@ public sealed class AttendancePayrollSyncService : IAttendancePayrollSyncService
                     if (txn is not null && txn.Status != PayrollTransactionStatus.Cancelled)
                     {
                         txn.Status = PayrollTransactionStatus.Cancelled;
-                        txn.StatusReason = "Attendance penalty cleared on re-sync.";
+                        txn.StatusReason = "Attendance impact cleared on re-sync.";
                         await ClearRefsAsync(txn.Id, ct);
                         removed++;
                     }
@@ -97,11 +105,11 @@ public sealed class AttendancePayrollSyncService : IAttendancePayrollSyncService
                 {
                     txn = new PayrollTransaction
                     {
-                        Kind = PayrollTransactionKind.Deduction,
+                        Kind = txnKind,
                         EmployeeId = empId,
                         TypeId = typeId,
                         Amount = amount,
-                        EffectiveDate = period.Start,           // period-scoped: never cutoff-carried
+                        EffectiveDate = period.Start,
                         TransactionDate = period.End,
                         TargetPeriodYear = period.Year,
                         TargetPeriodMonth = period.Month,
@@ -110,18 +118,23 @@ public sealed class AttendancePayrollSyncService : IAttendancePayrollSyncService
                         Status = PayrollTransactionStatus.Approved,
                     };
                     _db.PayrollTransactions.Add(txn);
-                    await _db.SaveChangesAsync(ct);        // materialize Id for the reference rows
+                    await _db.SaveChangesAsync(ct);
                     created++;
                 }
                 else
                 {
                     txn.Amount = amount;
                     if (txn.Status == PayrollTransactionStatus.Cancelled)
-                        txn.Status = PayrollTransactionStatus.Approved; // penalty reappeared
+                        txn.Status = PayrollTransactionStatus.Approved;
                     updated++;
                 }
 
-                await WriteRefsAsync(txn.Id, kind, dailyWage, hourlyWage,
+                var rateForKind = kind switch
+                {
+                    AttendancePayrollKind.Absence => rates.Absence, AttendancePayrollKind.Late => rates.Late,
+                    AttendancePayrollKind.Shortage => rates.Shortage, _ => rates.Overtime,
+                };
+                await WriteRefsAsync(txn.Id, kind, dailyWage, hourlyWage, rateForKind,
                     rowsByEmp.TryGetValue(empId, out var rs) ? rs : new(), ct);
             }
         }
@@ -130,32 +143,35 @@ public sealed class AttendancePayrollSyncService : IAttendancePayrollSyncService
         return new AttendancePayrollSyncReport(created, updated, removed, skipped, processed);
     }
 
-    private async Task<IReadOnlyDictionary<AttendancePayrollKind, Guid>> ResolveTypesAsync(CancellationToken ct)
+    private async Task<IReadOnlyDictionary<AttendancePayrollKind, (Guid TypeId, PayrollTransactionKind TxnKind)>> ResolveTypesAsync(
+        bool includeDed, bool includeOt, CancellationToken ct)
     {
-        var codes = KindCodes.Select(k => k.Code).ToArray();
         var found = await _db.MasterDataItems.AsNoTracking()
-            .Where(m => m.ObjectType == MasterDataObjectType.DeductionType && codes.Contains(m.Code))
-            .Select(m => new { m.Code, m.Id }).ToListAsync(ct);
-        var byCode = found.ToDictionary(x => x.Code, x => x.Id, StringComparer.OrdinalIgnoreCase);
-        var map = new Dictionary<AttendancePayrollKind, Guid>();
-        foreach (var (kind, code) in KindCodes)
+            .Where(m => (m.ObjectType == MasterDataObjectType.DeductionType || m.ObjectType == MasterDataObjectType.AdditionType))
+            .Select(m => new { m.ObjectType, m.Code, m.Id }).ToListAsync(ct);
+        var byKey = found.ToDictionary(x => (x.ObjectType, x.Code.ToUpperInvariant()), x => x.Id);
+        var map = new Dictionary<AttendancePayrollKind, (Guid, PayrollTransactionKind)>();
+        foreach (var spec in KindSpecs)
         {
-            if (!byCode.TryGetValue(code, out var id))
-                throw new DomainException($"No DeductionType configured for attendance penalty '{kind}' (code {code}). Re-run payroll bootstrap.");
-            map[kind] = id;
+            // Only require master-data for the kinds that are actually enabled.
+            var kindEnabled = spec.Kind == AttendancePayrollKind.Overtime ? includeOt : includeDed;
+            if (!kindEnabled) continue;
+            if (!byKey.TryGetValue((spec.ObjectType, spec.Code), out var id))
+                throw new DomainException($"No {spec.ObjectType} configured for attendance kind '{spec.Kind}' (code {spec.Code}). Re-run payroll bootstrap.");
+            map[spec.Kind] = (id, spec.TxnKind);
         }
         return map;
     }
 
     private async Task WriteRefsAsync(Guid txnId, AttendancePayrollKind kind, decimal dailyWage, decimal hourlyWage,
-        List<AttendanceBreakdownRow> rows, CancellationToken ct)
+        decimal multiplier, List<AttendanceBreakdownRow> rows, CancellationToken ct)
     {
         await ClearRefsAsync(txnId, ct);
         foreach (var r in rows.Where(r => r.PenaltyKind == kind))
         {
             var contribution = kind == AttendancePayrollKind.Absence
-                ? dailyWage * r.Days
-                : Math.Round(r.Minutes / 60m, 2) * hourlyWage;
+                ? dailyWage * r.Days * multiplier
+                : Math.Round(r.Minutes / 60m, 2) * hourlyWage * multiplier;
             _db.PayrollTransactionAttendanceReferences.Add(new PayrollTransactionAttendanceReference
             {
                 PayrollTransactionId = txnId, AttendanceRecordId = r.AttendanceRecordId,
