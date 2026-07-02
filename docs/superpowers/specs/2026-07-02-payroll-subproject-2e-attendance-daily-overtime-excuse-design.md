@@ -105,7 +105,7 @@ The sync already stamps `SourceModule="Attendance"`, `ReferenceType`, and the re
 
 ## 8. Migration & open implementation items
 
-- **No new migration** — the `PayrollTransactionAttendanceReference` table + `PayrollTransaction` provenance columns (2D/2A) suffice; `AttendancePayrollKind.Overtime = 4` is a new int enum value, not a schema change; `CalcSettingsJson` already exists (jsonb).
+- **One small seed-data migration** — the new permission `Attendance.PayrollImpact.Create` is seeded through `SeedData.SeedPermissions` (`HasData`, deterministic Id), so it produces an `InsertData` migration. No table/column/schema changes otherwise: the `PayrollTransactionAttendanceReference` table + `PayrollTransaction` provenance columns (2D/2A) suffice; `AttendancePayrollKind.Overtime = 4` is a new int enum value, not a schema change; `CalcSettingsJson` already exists (jsonb). The Super Admin permission template is `AllPermissions` (computed from the live Permission catalog), so the new permission reaches admins when access templates are (re)seeded on deploy.
 - Rename touchpoints: service + interface + enum + DI registration + `PayrollRunEngine` field/ctor + `PayrollController` field/ctor + 2D tests.
 - New permission `Attendance.PayrollImpact.Create` seeded in the permission seeder + granted to the appropriate default roles.
 - New endpoint on the Attendance controller depending on `IAttendancePayrollSyncService`.
